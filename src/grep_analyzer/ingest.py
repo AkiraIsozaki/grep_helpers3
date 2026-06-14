@@ -1,4 +1,4 @@
-"""input/*.grep の行パース（バイト境界）。
+"""input/*.grep の行をバイト境界でパースする。
 """
 
 import re
@@ -14,7 +14,7 @@ def parse_grep_line(line: bytes) -> tuple[bytes, int, bytes] | None:
     UTF-8 ファイルシステムへ再エンコードしても元バイトに戻らない）。
     復号方針（パス＝fsdecode／content＝文字コード判定）は呼び出し側責務。
 
-    不一致なら None（呼び出し側が diagnostics に回す）。
+    不一致なら None を返す（呼び出し側が diagnostics に回す）。
     """
     m = _LINE_RE.match(line.rstrip(b"\r\n"))
     if m is None:

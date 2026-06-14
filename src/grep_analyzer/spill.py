@@ -1,8 +1,8 @@
-"""来歴エッジのディスクスピル。予算内はメモリ保持、超過でディスク追記退避。
+"""来歴エッジをディスクへスピルする。予算内はメモリに保持し、超過でディスクへ追記退避する。
 
-sorted_unique は in-memory/spill いずれでも sorted(set(edges)) と同一（決定的）。
-in_memory_len はメモリ常駐数（スピル後 0）。maybe_spill_now は engine 用で
-内部 _spill_now を直呼び（_force_spill_threshold は unit テスト専用）。
+sorted_unique は in-memory/spill いずれでも sorted(set(edges)) と同一である（決定的）。
+in_memory_len はメモリ常駐数を返す（スピル後 0）。maybe_spill_now は engine 用で
+内部 _spill_now を直呼びする（_force_spill_threshold は unit テスト専用）。
 """
 
 import os
@@ -36,13 +36,13 @@ def _dec(s: str) -> str:
 
 
 def serialize_edge(p: Occurrence, c: Occurrence) -> str:
-    """1 エッジを 6 フィールドのタブ区切り1行へ（制御文字エスケープ）。"""
+    """1 エッジを 6 フィールドのタブ区切り1行へ変換する（制御文字エスケープ）。"""
     return "\t".join((_enc(p.symbol), _enc(p.relpath), str(p.lineno),
                       _enc(c.symbol), _enc(c.relpath), str(c.lineno)))
 
 
 def parse_edge(line: str) -> tuple[Occurrence, Occurrence]:
-    """serialize_edge の逆。完全可逆。"""
+    """serialize_edge の逆変換である。完全に可逆である。"""
     f = line.rstrip("\n").split("\t")
     return (Occurrence(_dec(f[0]), _dec(f[1]), int(f[2])),
             Occurrence(_dec(f[3]), _dec(f[4]), int(f[5])))
@@ -61,7 +61,7 @@ class EdgeStore:
         self._force_spill_threshold: int | None = None  # unit テスト専用
 
     def add(self, p: Occurrence, c: Occurrence) -> None:
-        """1 エッジ追加。予算/unit フック超過で以降スピルへ。"""
+        """1 エッジを追加する。予算/unit フック超過で以降はスピルへ切り替える。"""
         if self.spilled:
             self._fh.write(serialize_edge(p, c) + "\n")
             return
@@ -69,11 +69,11 @@ class EdgeStore:
         self.maybe_spill()
 
     def in_memory_len(self) -> int:
-        """メモリ常駐エッジ数（スピル後は 0）。"""
+        """メモリ常駐エッジ数を返す（スピル後は 0）。"""
         return 0 if self.spilled else len(self._mem)
 
     def maybe_spill(self) -> None:
-        """予算/unit フック超過ならスピル。"""
+        """予算/unit フック超過ならスピルする。"""
         if self.spilled:
             return
         thr = self._force_spill_threshold
@@ -83,7 +83,7 @@ class EdgeStore:
             self._spill_now()
 
     def maybe_spill_now(self) -> None:
-        """engine priority-2 用＝予算判定に依らず即スピル（フック非経由）。"""
+        """engine priority-2 用で、予算判定に依らず即スピルする（フック非経由）。"""
         if not self.spilled:
             self._spill_now()
 
@@ -105,7 +105,7 @@ class EdgeStore:
         self.spilled = True
 
     def sorted_unique(self) -> Iterator[tuple[Occurrence, Occurrence]]:
-        """sorted(set(edges)) と同一順序・同一集合（出力透過・決定的）。"""
+        """sorted(set(edges)) と同一順序・同一集合を返す（出力透過・決定的）。"""
         if not self.spilled:
             yield from sorted(set(self._mem))
             return
@@ -118,7 +118,7 @@ class EdgeStore:
         yield from sorted(seen)
 
     def close(self) -> None:
-        """一時ファイルを閉じ削除する（確定ループ完了後・例外時も finally で）。
+        """一時ファイルを閉じて削除する（確定ループ完了後・例外時も finally で呼ぶ）。
 
         _fh.close() が失敗（例: クローズ時の flush でディスク満杯）しても一時ファイルの
         unlink は必ず試みる。さもないと自PID保全方針下で残骸が同一プロセス生存中
@@ -135,7 +135,7 @@ class EdgeStore:
 
 
 def _pid_from_name(name: str) -> int | None:
-    """ga_edges_<pid>_<rand>.tsv から <pid> を取り出す。PID 無しレガシー名は None。"""
+    """ga_edges_<pid>_<rand>.tsv から <pid> を取り出す。PID 無しレガシー名は None を返す。"""
     rest = name[len("ga_edges_"):]
     head = rest.split("_", 1)[0]
     return int(head) if head.isdigit() else None
@@ -162,7 +162,7 @@ def cleanup_stale_edge_files(spill_dir: "Path | None" = None) -> int:
     スピルの誤削除を防ぐと同時に、cleanup が（万一）自 run のスピルより後に呼ばれても
     自分のファイルを消して自滅しない（自ファイルの掃除は EdgeStore.close() の責務）。
     死んだ PID・PID 無しレガシー名は stale とみなして掃除する。
-    返り値は削除件数。削除不能（権限・他プロセス使用中）は黙って残す（ベストエフォート）。
+    返り値は削除件数である。削除不能（権限・他プロセス使用中）は黙って残す（ベストエフォート）。
     """
     d = Path(spill_dir) if spill_dir is not None else Path(tempfile.gettempdir())
     removed = 0

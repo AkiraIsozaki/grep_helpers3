@@ -1,6 +1,6 @@
 """静的シンボル採否ポリシー。汎用名の横展開爆発を篩で防ぐ。
 
-静的ソースのみ対象。集合サイズ上限の切り捨ては大域・累積のため fixedpoint 側。
+静的ソースのみを対象とする。集合サイズ上限の切り捨ては大域・累積のため fixedpoint 側で行う。
 """
 
 from dataclasses import dataclass
@@ -64,7 +64,7 @@ LANG_KEYWORDS: dict[str, frozenset[str]] = {
 
 @dataclass(frozen=True)
 class SymbolPolicy:
-    """採否の静的パラメータ。大域 cap は fixedpoint 側なので cap は持たない。"""
+    """採否の静的パラメータを保持する。大域 cap は fixedpoint 側なので cap は持たない。"""
 
     min_specificity: int
     user_stoplist: frozenset[str]
@@ -72,7 +72,7 @@ class SymbolPolicy:
 
 @dataclass(frozen=True)
 class AdmissionResult:
-    """採否の結果。rejected は (シンボル, 理由) の順序保存列。"""
+    """採否の結果を表す。rejected は (シンボル, 理由) の順序保存列である。"""
 
     accepted: list[str]
     rejected: list[tuple[str, str]]
@@ -109,10 +109,10 @@ def admit(symbols: list[str], language: str, policy: SymbolPolicy) -> AdmissionR
 
 @dataclass(frozen=True)
 class Partition:
-    """ChaseSymbols の分割。
+    """ChaseSymbols の分割を表す。
 
     chase=横展開対象（constant/var）、terminal=報告専用（getter/setter）、
-    rejected=静的棄却（両方に適用）。大域 cap は fixedpoint 側。
+    rejected=静的棄却（両方に適用）。大域 cap は fixedpoint 側にある。
     """
 
     chase: list[str]

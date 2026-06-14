@@ -1,5 +1,5 @@
 """標準エラー進捗。level=="on" 以外は完全無音。stream（既定 sys.stderr）専用で
-TSV/diagnostics/終了コードに無影響。tick は hop 内の途中経過（liveness 用）。"""
+TSV/diagnostics/終了コードに無影響。tick は hop 内の途中経過を報告する（liveness 用）。"""
 
 import sys
 import time
@@ -26,7 +26,7 @@ class Progress:
                   file=self._stream, flush=True)
 
     def tick(self, hop: int, scanned: int) -> None:
-        """hop 内途中経過。every 件ごと（と最終件）に出す。stderr 専用・出力不変。"""
+        """hop 内の途中経過を出す。every 件ごと（と最終件）に出力する。stderr 専用で出力は不変。"""
         if not self._on:
             return
         if scanned - self._last >= self._every or scanned >= self._total:

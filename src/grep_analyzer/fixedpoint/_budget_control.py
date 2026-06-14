@@ -1,4 +1,4 @@
-"""グローバル cap / spill / nchunks 計算。
+"""グローバル cap / spill / nchunks を計算する。
 
 - apply_global_cap: --memory-limit / --max-symbols でシンボル集合を切り詰める。
   決定的（キー: (symbol_hop, len(s), s)）。
@@ -30,7 +30,7 @@ def apply_global_cap(state: ChaseState):
         if s not in state.capped:
             diag.add("symbol_rejected", f"capped\t{s}")
             state.capped.add(s)
-        # 既 capped でも discard は冪等。直前 hop で active になっていた可能性があるため
+        # 既 capped でも discard は冪等である。直前 hop で active になっていた可能性があるため
         # 両 set から確実に除外する。
         state.chase_active.discard(s)
         state.terminal_active.discard(s)
@@ -53,15 +53,15 @@ def maybe_spill(state: ChaseState, hop: int):
 
 
 def compute_nchunks_union(states, union_symbols, *, opts, budget) -> int:
-    """lock-step 共有エンジンの union 予算版 nchunks。
+    """lock-step 共有エンジンの union 予算版 nchunks を返す。
 
     複数 state にまたがる集計量で chunk 数を決める:
     n_live=len(union_symbols)（その hop の union 記号数）、
     n_intro=Σ_states Σ introducers、in_memory_len=Σ_states edge_store.in_memory_len()。
-    budget/opts は明示注入。
+    budget/opts は明示注入する。
 
     finite --memory-limit かつ hop≥2 では旧逐次版と chunk 数・automaton_split 診断が
-    異なり得るが、automaton_split は出力中立で chunking も TSV 不変。
+    異なり得るが、automaton_split は出力中立で chunking も TSV 不変である。
     """
     nchunks = 1
     if opts.force_chunks and opts.force_chunks > 1:

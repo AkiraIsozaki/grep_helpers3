@@ -1,11 +1,11 @@
-"""ドメインモデル（ChaseSymbols/Hit）とTSVスキーマ・決定的ソート・chaser 共有ヘルパ。"""
+"""ドメインモデル（ChaseSymbols/Hit）とTSVスキーマ・決定的ソート・chaser 共有ヘルパを提供する。"""
 
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class ChaseSymbols:
-    """1 行から抽出した追跡候補。
+    """1 行から抽出した追跡候補を表す。
 
     `constants` / `vars` は不動点で多ホップ追跡される。
     `getters` / `setters` は横展開せず、全反復で terminal として報告する。
@@ -40,7 +40,7 @@ TSV_COLUMNS = [
 
 @dataclass(frozen=True)
 class Hit:
-    """TSV1行に対応する分類結果（direct / indirect:* を含む）。"""
+    """TSV1行に対応する分類結果を表す（direct / indirect:* を含む）。"""
 
     keyword: str
     language: str
@@ -72,7 +72,7 @@ def sort_key(h: Hit) -> tuple:
     (ref_kind_rank, chain_group, file, lineno, ref_kind, via_symbol,
      category, category_sub, confidence, usage_summary, snippet,
      language, encoding)。ref_kind_rank: direct→0 / indirect:*→1。
-    chain_group: direct→"" / indirect:*→chain。lineno は数値順。
+    chain_group: direct→"" / indirect:*→chain。lineno は数値順で比較する。
     """
     ref_kind_rank = 0 if h.ref_kind == "direct" else 1
     chain_group = "" if h.ref_kind == "direct" else h.chain

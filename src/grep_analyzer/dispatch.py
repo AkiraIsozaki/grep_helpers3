@@ -25,12 +25,12 @@ _EXT_MAP = {
 # 言語判定に渡すサンプリング窓（バイト数相当の文字数）。EXEC SQL は長い preamble の
 # 後に現れることがあり、4096 字では取りこぼす（test_dispatch の preamble テスト参照）。
 # direct(pipeline) と scan/indirect(_scan) の両経路が同一窓で同一に分類するための
-# 単一情報源（窓が食い違うと同一ファイルが経路により別言語に分類され列がブレる）。
+# 単一情報源とする（窓が食い違うと同一ファイルが経路により別言語に分類され列がブレる）。
 LANG_SAMPLE_BYTES = 64 * 1024
 
 _EXEC_SQL_RE = re.compile(r"\bEXEC\s+SQL\b", re.IGNORECASE)
 
-# C リテラル/コメントを同字数空白に潰す dispatch 専用マスク。
+# C リテラル/コメントを同字数空白に潰す dispatch 専用マスクである。
 # MASK_SPECS["c"] は AST 化方針のため非対象（literal_masking.py 注記）。よって
 # 言語判定ヒューリスティック（EXEC SQL search）専用にここで局所的にマスクする。
 _C_LITERAL_RE = re.compile(
@@ -42,7 +42,7 @@ def _mask_c_literals(text: str) -> str:
     return _C_LITERAL_RE.sub(lambda m: " " * len(m.group(0)), text)
 
 
-# シェバン: 第1物理行の1列目（先頭 BOM=U+FEFF 可）に #! が必須。
+# シェバンは第1物理行の1列目（先頭 BOM=U+FEFF 可）に #! が必須である。
 _SHEBANG_RE = re.compile(r"^\ufeff?#!\s*(\S+)(?:\s+(\S+))?")
 _BOURNE_INTERP = {"sh", "bash", "ksh", "dash"}
 _CSHELL_INTERP = {"csh", "tcsh"}
@@ -69,7 +69,7 @@ def _shebang_interp(content_sample: str) -> str | None:
 def shebang_language(content_sample: str) -> str | None:
     """シェバンを言語名（shell/perl/groovy/javascript/python）に解決する。
 
-    シェバン無し・対応外 interpreter（awk 等）の場合は None。
+    シェバン無し・対応外 interpreter（awk 等）の場合は None を返す。
     """
     interp = _shebang_interp(content_sample)
     return None if interp is None else _SHEBANG_LANG.get(interp)

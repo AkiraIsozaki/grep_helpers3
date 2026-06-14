@@ -1,4 +1,4 @@
-"""Java 用 AST Chaser — field-directed・multi-node 抽出。
+"""Java 用の AST Chaser であり、field-directed・multi-node で抽出する。
 
 `ASTChaser` プロトコル準拠の `extract_tree` を公開し、
 `_AST_CHASERS["java"]` / `_AST_CHASERS["jsp"]` 経由で呼び出す。
@@ -52,5 +52,5 @@ def extract_tree(language, root, lineno):
     consts, vars_, getters, setters = [], [], [], []
     for node in bindings_at_line(root, lineno, _AST_BINDING):
         _handle_java(node, lineno, consts, vars_, getters, setters)
-    # const/var 抑止・出現順 uniq は dedup_symbols に委譲（全 chaser 共通）。
+    # const/var 抑止・出現順 uniq は dedup_symbols に委譲する（全 chaser 共通）。
     return dedup_symbols(consts, vars_, getters, setters)

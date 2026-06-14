@@ -1,4 +1,4 @@
-"""ChaseState: run_fixedpoint の局所状態をまとめたデータクラス。
+"""ChaseState: run_fixedpoint の局所状態をデータクラスにまとめる。
 
 main process でのみ保持・更新する（multiprocessing worker には渡さない）。
 worker には (relpath, abspath, symbol_list, lang_map, fallback) のプリミティブのみ渡す
@@ -20,7 +20,7 @@ from grep_analyzer.stoplist import SymbolPolicy
 
 @dataclass
 class ChaseState:
-    """不動点反復の全状態。main process 専有。
+    """不動点反復の全状態を保持する。main process が専有する。
 
     `introducers`: シンボル -> 発見元 Occurrence 群
     `symbol_kind`: シンボル -> kind（constant/var/getter/setter）

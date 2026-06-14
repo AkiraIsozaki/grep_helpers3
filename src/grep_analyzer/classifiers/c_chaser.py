@@ -1,9 +1,9 @@
-"""C / Pro*C 用 AST Chaser — field-directed・multi-node 抽出。
+"""C / Pro*C 用の AST Chaser であり、field-directed・multi-node で抽出する。
 
 C と Pro*C は同じ抽出規則を共有する（Pro*C は C のスーパーセット）。
 `ASTChaser` プロトコル準拠の `extract_tree` を公開し、
 `_AST_CHASERS["c"]` / `_AST_CHASERS["proc"]` 経由で呼び出す。
-Pro*C の EXEC SQL 区間は mask_exec_sql で空白化済み。
+Pro*C の EXEC SQL 区間は mask_exec_sql で空白化済みである。
 """
 
 from grep_analyzer.classifiers.ts_classifier import bindings_at_line
@@ -21,7 +21,7 @@ def _declarator_name(node):
     if t in ("init_declarator", "pointer_declarator", "array_declarator"):
         d = node.child_by_field_name("declarator")
         return _declarator_name(d) if d is not None else None
-    return None     # function_declarator（関数名・関数ポインタ等）は対象外
+    return None     # function_declarator（関数名・関数ポインタ等）は対象外とする
 
 
 def _decl_names(node, out):
@@ -34,7 +34,7 @@ def _decl_names(node, out):
 
 
 def _is_const(node) -> bool:
-    # tree-sitter-c の type_qualifier は1トークン1ノード（const/volatile/...）
+    # tree-sitter-c の type_qualifier は1トークン1ノードである（const/volatile/...）
     return any(ch.type == "type_qualifier" and ch.text.decode("utf-8", "replace") == "const"
                for ch in node.children)
 
@@ -58,5 +58,5 @@ def extract_tree(language, root, lineno):
     consts, vars_ = [], []
     for node in bindings_at_line(root, lineno, _AST_BINDING):
         _handle_c(node, consts, vars_)
-    # const/var 抑止・出現順 uniq は dedup_symbols に委譲（全 chaser 共通）。
+    # const/var 抑止・出現順 uniq は dedup_symbols に委譲する（全 chaser 共通）。
     return dedup_symbols(consts, vars_, (), ())

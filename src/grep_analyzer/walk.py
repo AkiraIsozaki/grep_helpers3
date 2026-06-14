@@ -1,6 +1,7 @@
-"""決定的ツリー走査。relpath 昇順・glob・サイズ/バイナリ skip・
+"""決定的なツリー走査を行う。relpath 昇順・glob・サイズ/バイナリ skip・
 
-生成コード既定除外・symlink は既定で辿らず realpath 重複排除。走査順非依存決定的。
+生成コードの既定除外を備え、symlink は既定で辿らず realpath で重複排除する。
+結果は走査順に依存せず決定的である。
 """
 
 import fnmatch
@@ -10,8 +11,8 @@ from pathlib import Path
 
 from grep_analyzer.diagnostics import Diagnostics
 
-# 対象言語（Java/C/Pro*C/SQL/Shell）に合わせた保守的な既定除外。
-# Python/JS 生成物は対象外のため含めない。具体的な除外集合は実装委任。
+# 対象言語（Java/C/Pro*C/SQL/Shell）に合わせた保守的な既定除外である。
+# Python/JS 生成物は対象外のため含めない。具体的な除外集合は実装に委ねる。
 DEFAULT_EXCLUDE: tuple[str, ...] = (
     "**/target/**", "**/build/**", "**/generated/**", "**/.git/**")
 
@@ -71,9 +72,9 @@ _BOMS = (b"\x00\x00\xfe\xff", b"\xff\xfe\x00\x00", b"\xff\xfe", b"\xfe\xff")
 
 
 def _classify_bytes(head: bytes) -> str:
-    """先頭バイト列を 'binary'(NUL) / 'unsafe'(UTF-16/32 BOM=非ASCII透過) / 'ok' に分類。
+    """先頭バイト列を 'binary'(NUL) / 'unsafe'(UTF-16/32 BOM=非ASCII透過) / 'ok' に分類する。
 
-    NUL 走査は _PREFIX(64KiB) 全域＝_is_binary の 8KiB より厳格（_walk_classified 専用）。
+    NUL 走査は _PREFIX(64KiB) 全域で、_is_binary の 8KiB より厳格である（_walk_classified 専用）。
     """
     for bom in _BOMS:
         if head.startswith(bom):
@@ -212,7 +213,7 @@ def collect_files_ex(
     """collect_files の拡張版。(files, total_bytes, unsafe_rels) を返す。
 
     total_bytes は yield されたファイルのみ累算（large/binary/dedup 除外後）。
-    unsafe_rels は UTF-16/32 BOM 等の非ASCII透過ファイル（prefilter で常に走査対象に残す）。
+    unsafe_rels は UTF-16/32 BOM 等の非ASCII透過ファイルで、prefilter で常に走査対象に残す。
     on_progress: 受理ファイル数が progress_every の倍数に達するたびに on_progress(count) を呼ぶ。
     """
     files, unsafe, total = [], set(), 0

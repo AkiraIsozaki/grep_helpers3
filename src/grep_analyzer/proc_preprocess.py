@@ -7,7 +7,7 @@ import re
 
 from grep_analyzer.patterns.literal_masking import MASK_PATTERNS
 
-# `EXEC SQL ... ;` / `EXEC SQL ... END-EXEC` / `EXEC ORACLE ... ;` を行跨ぎで捕捉
+# `EXEC SQL ... ;` / `EXEC SQL ... END-EXEC` / `EXEC ORACLE ... ;` を行跨ぎで捕捉する
 _EXEC_RE = re.compile(
     r"\bEXEC\s+(?:SQL|ORACLE)\b.*?(?:;|END-EXEC\b)",
     re.IGNORECASE | re.DOTALL,

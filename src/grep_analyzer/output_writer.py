@@ -23,7 +23,7 @@ def _data_line(h: Hit) -> str:
 
 
 def _blob_from_data_rows(data_rows: list[str]) -> bytes:
-    """データ行列→正規バイト列（唯一の正規化終端）。書込側・完了判定側が共有。
+    """データ行列→正規バイト列（唯一の正規化終端）。書込側・完了判定側が共有する。
 
     末尾改行無・LF 連結・"utf-8"（BOM 無 codec）。
     surrogate（FS 走査由来パス等）は errors="replace" で置換し、_part_bytes と同規約に
@@ -33,7 +33,7 @@ def _blob_from_data_rows(data_rows: list[str]) -> bytes:
 
 
 def _canonical_data_blob(ordered: list[Hit]) -> bytes:
-    """ソート済 Hit→正規バイト列。書込側経路（_blob_from_data_rows を共有）。"""
+    """ソート済 Hit を正規バイト列へ変換する。書込側経路（_blob_from_data_rows を共有）。"""
     return _blob_from_data_rows([_data_line(h) for h in ordered])
 
 
@@ -58,7 +58,7 @@ def _rows_from_part_text(text: str) -> list[str]:
 
 
 def _atomic_write(path: "Path", data: bytes) -> None:
-    """唯一の原子書込プリミティブ（mkstemp->fsync->os.replace で不可分置換）。"""
+    """唯一の原子書込プリミティブである（mkstemp->fsync->os.replace で不可分置換）。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent),
                                prefix=path.name + ".", suffix=".tmp")

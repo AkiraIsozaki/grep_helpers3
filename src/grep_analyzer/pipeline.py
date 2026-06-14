@@ -1,4 +1,4 @@
-"""direct＋不動点 indirect 併合パイプライン。"""
+"""direct と不動点 indirect を併合するパイプラインである。"""
 
 import os
 import shutil
@@ -52,8 +52,8 @@ def run(
 ) -> int:
     """input/*.grep を処理し、direct＋不動点 indirect を併合した TSV を出力する。
 
-    全 keyword を1本の lock-step 走査（run_fixedpoint_multi）で処理する転置構造。
-    direct 構築は keyword 単位に byte 同値、enc_memo は run 全体で共有。
+    全 keyword を1本の lock-step 走査（run_fixedpoint_multi）で処理する転置構造である。
+    direct 構築は keyword 単位に byte 同値で、enc_memo は run 全体で共有する。
     diagnostics は逐次版の追記順（walk → keyword ソート順に [direct, indirect]）を
     merge_in_order で再現する。
     """
@@ -68,7 +68,7 @@ def run(
         lang_map = opts.lang_map
         # --- 1. walk + 実効 use_ripgrep 解決（walk 由来診断は walk_diag に集約） ---
         walk_diag = Diagnostics()
-        # collect_files_ex: 64KiB NUL prefix（collect_files の 8KiB より厳格）＋ total_bytes/unsafe_rels を prefilter 判定に利用
+        # collect_files_ex: 64KiB NUL prefix（collect_files の 8KiB より厳格）＋ total_bytes/unsafe_rels を prefilter 判定に利用する
         def _walk_cb(n):
             print(f"[grep_analyzer] walking {n} files...", file=sys.stderr, flush=True)
         files, total_bytes, unsafe_rels = collect_files_ex(

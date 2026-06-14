@@ -1,4 +1,4 @@
-"""kw 単位 resume の完了判定（完了判定1〜5）。"""
+"""kw 単位 resume の完了判定を行う（完了判定1〜5）。"""
 
 import hashlib
 import json

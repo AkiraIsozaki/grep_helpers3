@@ -1,4 +1,4 @@
-"""snippet 切り出しパッケージ。
+"""snippet 切り出しのパッケージである。
 
 公開エントリは build_snippet。clamp_lines / heuristic_span / ts_span / proc_exec_span は
 テスト用に再 export する。
@@ -23,7 +23,7 @@ __all__ = [
 def build_snippet(language: str, dialect: str, file_text: str,
                   lineno: int, cache: dict | None = None,
                   lines: list[str] | None = None) -> str:
-    """snippet 切り出しのエントリ。確定済み 1 セル文字列を返す。
+    """snippet 切り出しのエントリである。確定済み 1 セル文字列を返す。
 
     java/c: ts_span → None なら ヒット 1 行（java/c に heuristic は適用しない）。
     proc: proc_exec_span → ts_span("proc") → None なら ヒット 1 行。

@@ -1,8 +1,8 @@
 """Perl 用 Chaser — sigil 付き代入左辺・use constant を抽出する。
 
 sigil（$ @ %）は剥がして bare 識別子を追跡シンボルとする。
-getter/setter は型解決依存のため不追跡。heredoc/POD/任意デリミタ q// は
-行単位マスクの対象外（既知境界）。
+getter/setter は型解決依存のため追跡しない。heredoc/POD/任意デリミタ q// は
+行単位マスクの対象外である（既知境界）。
 `_CHASERS["perl"]` 経由で呼び出す。
 """
 

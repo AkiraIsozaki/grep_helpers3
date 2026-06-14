@@ -1,4 +1,4 @@
-"""tree-sitter による Java/C/Pro*C 分類。py-tree-sitter 0.23 API に依存。"""
+"""tree-sitter で Java/C/Pro*C を分類する。py-tree-sitter 0.23 API に依存する。"""
 
 # tree-sitter wheel 欠落でも regex トラックを起動可能にするため遅延 import。
 # AST 経路（java/c/proc/jsp/angular/angular_inline/python/javascript/typescript/tsx）に
@@ -11,7 +11,7 @@ _LANGS: dict | None = None
 
 
 def _ensure_langs() -> dict:
-    """tree-sitter grammar を初回アクセス時に構築（遅延）。"""
+    """tree-sitter grammar を初回アクセス時に遅延構築する。"""
     global _LANGS
     if _LANGS is None:
         import tree_sitter_c
@@ -32,7 +32,7 @@ def _ensure_langs() -> dict:
     return _LANGS
 
 
-# ノード型 → カテゴリ（判定軸の最小集合）。
+# ノード型 → カテゴリの対応であり、判定軸の最小集合とする。
 # 内側から外へ climb して最初に一致した文レベルノードを採る。
 # argument_list / init_declarator は if/宣言 と包含関係で衝突するため含めない。
 _CATEGORY_JAVAC = {
@@ -82,7 +82,7 @@ _CATEGORY_BY_LANG = {
 
 
 # Parser は grammar ごとに 1 度だけ生成して再利用する（parse は毎回新 Tree を返すので再利用安全）。
-# jobs>1 はプロセス並列なので各プロセスが独立した dict を持つ。スレッド共有は無い。
+# jobs>1 はプロセス並列なので各プロセスが独立した dict を持ち、スレッド共有は無い。
 # Parser 型をトップレベルで参照しないため dict アノテーションを緩める（遅延 import と同理由）。
 _PARSERS: dict = {}
 
@@ -100,7 +100,7 @@ def _parser(language: str) -> "Parser":
 def node_at_line(root, lineno: int):
     """対象行（lineno は 1 始まり）を内包する最小ノードを決定的に返す。
 
-    `(行スパン, start_byte, end_byte, ノード型)` の最小で一意選択（走査順に依存しない全順序）。
+    `(行スパン, start_byte, end_byte, ノード型)` の最小で一意選択する（走査順に依存しない全順序）。
     classify_ts と snippet/_ts.py が共有する。
     """
     target = lineno - 1
@@ -122,7 +122,7 @@ def binding_at_line(root, lineno: int, binding_types):
 
     node_at_line と同じ全順序キー (行スパン, start_byte, end_byte, 型) で一意選択。
     「最左最小葉から climb」では届かない束縛（例: `class C { get x() {} }`）を
-    直接拾うために使う。該当なしは None。
+    直接拾うために使う。該当なしのときは None を返す。
     """
     target = lineno - 1
     best = None
@@ -146,7 +146,7 @@ def bindings_at_line(root, lineno: int, binding_types):
     binding_at_line（最小スパン単一ノード）と異なり、1行に複数の束縛が同居するケース
     （例: `int count = svc.getName(); obj.setValue(count);`）を全件返す。
     順序は (start_byte, end_byte, type) 昇順で安定（決定性）。
-    name 行ゲート（method 系のみ name 行に絞る）は各 chaser ハンドラの責務。
+    name 行ゲート（method 系のみ name 行に絞る）は各 chaser ハンドラの責務とする。
     """
     target = lineno - 1
     out = []
@@ -162,7 +162,7 @@ def bindings_at_line(root, lineno: int, binding_types):
 
 
 class _ParseFailed(Exception):
-    """tree-sitter parse() が例外を投げたことを表す内部シグナル。"""
+    """tree-sitter parse() が例外を投げたことを表す内部シグナルである。"""
 
 
 def classify_ts(language: str, source: str, lineno: int,
@@ -179,8 +179,8 @@ def classify_ts(language: str, source: str, lineno: int,
             diag.add("ts_parse_failed", language)
         return ("その他", "low")
     node = node_at_line(root, lineno)
-    # コメント専用行（最小ノードが comment）は climb 前に短絡。
-    # java=line_comment/block_comment、他=comment を endswith で一律カバー。
+    # コメント専用行（最小ノードが comment）は climb 前に短絡する。
+    # java=line_comment/block_comment、他=comment を endswith で一律カバーする。
     if node is not None and node.type.endswith("comment"):
         return ("コメント", "low")
     while node is not None:
@@ -203,7 +203,7 @@ def parse_tree(language: str, source: str, cache: dict | None = None):
     if cache is not None and language in cache:
         return cache[language]
     # _parser()（grammar 解決）と host_source()（逆マスク）は try の外に置く。
-    # KeyError 等のロジック例外は握り潰さず即死させる。try は .parse() の1呼出のみ。
+    # KeyError 等のロジック例外は握り潰さず即死させる。try は .parse() の1呼出のみに絞る。
     parser = _parser(language)
     src_bytes = host_source(language, source).encode("utf-8")
     try:

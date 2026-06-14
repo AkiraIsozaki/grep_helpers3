@@ -1,8 +1,8 @@
 """Groovy 用 Chaser — final 定数と def/型付き変数代入を抽出する。
 
 final（static 任意）を constant、それ以外の代入左辺を var とする。
-getter/setter は型解決依存のため不追跡。`obj.field=` の限定子剥がし・
-複数行 GString・slashy string は既知境界。
+getter/setter は型解決依存のため追跡しない。`obj.field=` の限定子剥がし・
+複数行 GString・slashy string は既知の境界である。
 `_CHASERS["groovy"]` 経由で呼び出す。
 """
 

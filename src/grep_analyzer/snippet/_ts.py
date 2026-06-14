@@ -1,4 +1,4 @@
-"""tree-sitter による java/c span + Pro*C EXEC span。
+"""tree-sitter による java/c span + Pro*C EXEC span を切り出す。
 
 node_at_line で最小内包葉を取り、.parent 上昇で粒度表へ昇格する。
 block 等に到達した場合は直近 statement を採用する。
@@ -9,7 +9,7 @@ from grep_analyzer.classifiers.ts_classifier import node_at_line, parse_tree
 from grep_analyzer.embed_preprocess import host_grammar
 from grep_analyzer.proc_preprocess import exec_spans
 
-# ノード型集合（「ts_span 粒度」表と対応）。
+# ノード型集合（「ts_span 粒度」表と対応する）。
 # tree-sitter ライブラリを更新したときは再点検すること。
 _GRAN_JAVA = {"if_statement", "while_statement", "for_statement",
               "switch_expression", "switch_statement",
@@ -53,7 +53,7 @@ _SETS_BY_LANG = {
 
 
 def _paren_span(node) -> tuple[int, int]:
-    """( 〜対応 ) の物理行スパン。AST 子で取得（文字列内括弧に頑健）。"""
+    """( 〜対応 ) の物理行スパンを返す。AST 子で取得する（文字列内括弧に頑健）。"""
     for ch in node.children:
         if ch.type == "parenthesized_expression":
             return (ch.start_point[0], ch.end_point[0])
@@ -65,7 +65,7 @@ def _paren_span(node) -> tuple[int, int]:
 
 
 def _has_error(node) -> bool:
-    """ERROR/MISSING 判定。`has_error` は子孫包含の真偽。
+    """ERROR/MISSING を判定する。`has_error` は子孫包含の真偽を表す。
 
     選択ノードの部分木のみを判定する（祖先を遡らない）。
     ファイル内の無関係なエラーで健全行を捨てないための設計。
@@ -74,7 +74,7 @@ def _has_error(node) -> bool:
 
 
 def ts_span(language: str, file_text: str, lineno: int, cache: dict | None = None):
-    """選択範囲 [s,e]（0始まり物理行）。取れなければ None（→fallback）。
+    """選択範囲 [s,e]（0始まり物理行）を返す。取れなければ None（→fallback）。
 
     `cache` を渡すとファイル単位でパース木を共有し、classify/snippet/別行の再 parse を防ぐ。
     """

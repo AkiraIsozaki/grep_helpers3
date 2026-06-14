@@ -1,11 +1,11 @@
-"""1 行から ChaseState への追跡シンボル投入。
+"""1 行から ChaseState へ追跡シンボルを投入する。
 
 extract_chase_symbols で得た候補を stoplist.partition で chase / terminal /
 rejected に分け、`introducers`（発見元）に親 Occurrence を記録する。
 非 seed の自己定義行が自分自身を再抽出しても発見元にしない。
 
 `absorb_results`: scan 結果を ChaseState に反映する（edge_store 追加・
-encoding 記録・子の再 ingest）。`hop` は呼出時点で完了済みの hop 番号。
+encoding 記録・子の再 ingest）。`hop` は呼出時点で完了済みの hop 番号である。
 内部で hop+1 して次 hop の ingest に渡す。
 """
 
@@ -20,7 +20,7 @@ def ingest_one(state: ChaseState, parent: Occurrence, language: str,
                chase_symbols, kinds: dict[str, str], hop: int, is_seed: bool = False):
     """事前抽出済 (chase_symbols, kinds) を ChaseState に投入する。
 
-    抽出は呼出側（seed/absorb/worker）の責務。language は partition の
+    抽出は呼出側（seed/absorb/worker）の責務である。language は partition の
     keyword 篩（LANG_KEYWORDS）に必要なため保持する。
     """
     diag = state.diagnostics
@@ -64,7 +64,7 @@ def absorb_results(state: ChaseState, pass_results, scan_chase: set[str],
                    scan_term: set[str], hop: int):
     """scan_hop の結果を ChaseState に反映する（edge 追加・diag・子の再 ingest）。
 
-    hop は呼出時点で完了済みの hop 番号。子の ingest_one には hop + 1 を渡す。
+    hop は呼出時点で完了済みの hop 番号である。子の ingest_one には hop + 1 を渡す。
     """
     diag = state.diagnostics
     for relpath, enc, replaced, language, dialect, found in pass_results:

@@ -12,8 +12,8 @@ from grep_analyzer.classifiers.sql_chaser import _extract_var_symbols as _sql_ex
 from grep_analyzer.classifiers.ts_classifier import parse_tree
 from grep_analyzer.model import ChaseSymbols
 
-# 行ベース chaser への入力行の最大長。これを超える行は先頭のみを見る。
-# ReDoS を構造的に防ぐ安全弁。snippet の _clamp.CHAR_MAX=800 と揃える。
+# 行ベース chaser への入力行の最大長である。これを超える行は先頭のみを見る。
+# ReDoS を構造的に防ぐ。snippet の _clamp.CHAR_MAX=800 と揃える。
 # 通常のソース行長を上回るため出力は実質不変。ただし 8192 等の大きい値では
 # GROOVY 正規表現が依然 ReDoS する（実測: 8192字で 60s 超）ため必ず 800 とする。
 # automaton 走査（ヒット検出）には適用しないためヒットの取りこぼしは生じない。
@@ -24,7 +24,7 @@ def extract_var_symbols(language: str, dialect: str, line: str) -> list[str]:
     """1 行から indirect:var 追跡シンボル（代入の左辺識別子）を抽出する。
 
     左辺識別子のみが必要な呼出元向けに、Chaser を経由せず直接
-    `*_chaser._extract_var_symbols` を呼ぶ。対象外言語・該当なしは空リスト。
+    `*_chaser._extract_var_symbols` を呼ぶ。対象外言語・該当なしは空リストを返す。
     """
     line = line[:_MAX_CHASE_LINE]
     if language == "sql":

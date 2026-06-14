@@ -1,4 +1,4 @@
-"""`python -m grep_analyzer` エントリ。"""
+"""`python -m grep_analyzer` のエントリポイントである。"""
 
 import sys
 

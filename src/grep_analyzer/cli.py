@@ -7,7 +7,7 @@ from grep_analyzer.walk import DEFAULT_EXCLUDE
 
 
 def _parse_lang_map(spec: str | None) -> dict[str, str]:
-    """`.ext=lang,.e2=l2` を {".ext":"lang"} に。空は {}（手順1）。"""
+    """`.ext=lang,.e2=l2` を {".ext":"lang"} に変換する。空は {} を返す（手順1）。"""
     lang_map: dict[str, str] = {}
     if spec:
         for pair in spec.split(","):
@@ -141,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--memory-limit must be >= 0")
     if args.min_specificity < 0:
         parser.error("--min-specificity must be >= 0")
-    if args.max_file_bytes < 0:                      # 負値だと全ファイルが large 扱いで空出力
+    if args.max_file_bytes < 0:                      # 負値だと全ファイルが large 扱いで空出力になる
         parser.error("--max-file-bytes must be >= 0")
     if args.max_symbols < 1:
         parser.error("--max-symbols must be >= 1")

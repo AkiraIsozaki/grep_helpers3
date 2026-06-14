@@ -18,7 +18,7 @@ def classify_hit(
     """1 ヒットを言語別に分類して (category, confidence) を返す。
 
     java/c/proc/py/js/ts は tree-sitter(high)、sql/perl/groovy/shell は正規表現(medium)。
-    未知言語は bourne shell フォールバック。
+    未知言語は bourne shell にフォールバックする。
     `cache` を build_snippet と共有すると、同一ファイルの parse を 1 回に集約できる。
     """
     language = effective_language(language, file_text, lineno)

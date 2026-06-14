@@ -1,10 +1,10 @@
-"""言語別リテラル / コメントのマスク用 regex。
+"""言語別リテラル / コメントのマスク用 regex を定義する。
 
 リテラル文字列・コメントを同字数空白に置換する言語別パターン集。
 マッチ全体を空白に潰すため、後段の抽出は行番号・桁を保ったまま行える。
 
-注: java/c は AST 経路のため MASK_SPECS 非対象。
-    proc は proc_preprocess.py が MASK_PATTERNS["proc"] に直接依存するため残置。
+注: java/c は AST 経路のため MASK_SPECS の対象外である。
+    proc は proc_preprocess.py が MASK_PATTERNS["proc"] に直接依存するため残している。
 """
 
 import re

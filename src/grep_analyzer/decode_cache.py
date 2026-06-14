@@ -2,7 +2,7 @@
 
 キーに (abspath, mtime_ns, size, namespace) を含むため hop・worker・run を
 またいで安全に共有でき、ソース変更時は自動でミスする。アーティファクトは
-disk 上の 1 ファイル（1行 JSON ヘッダ ＋ 改行 ＋ 復号UTF-8本文）。
+disk 上の 1 ファイル（1行 JSON ヘッダ ＋ 改行 ＋ 復号UTF-8本文）として保存する。
 """
 
 import hashlib

@@ -74,7 +74,7 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
                 if union_keep is not None:
                     safe = union_keep | unsafe_rels
                     scan_files = [(r, a) for r, a in files if r in safe]
-            # 全 state は同じ opts 由来の budget を持つので先頭を取るだけで安全。
+            # 全 state は同じ opts 由来の budget を持つので先頭を取るだけで安全である。
             nchunks = compute_nchunks_union(
                 list(states_by_kw.values()), scan_symbols,
                 opts=opts, budget=next(iter(states_by_kw.values())).budget)
@@ -82,7 +82,7 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
                 scan_symbols, scan_files, opts, nchunks,
                 file_cache=file_cache, pool=pool, enc_memo=enc_memo,
                 progress=progress, hop_no=ghop, decode_cache=decode_cache)
-            # automaton_split は共有走査ゆえ global hop ごとに1回（出力中立）。
+            # automaton_split は共有走査ゆえ global hop ごとに1回だけ付与する（出力中立）。
             # その hop に live 記号（sc|stm）を持つ keyword のみに付与する
             # （逐次版で走査しない kw は automaton_split を記録しないため）。
             if nchunks > 1:
@@ -91,7 +91,7 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
                     if sc_k or stm_k:
                         st.diagnostics.add(
                             "automaton_split", f"hop={ghop} chunks={n_actual_chunks}")
-            # per-keyword decode_replaced/encoding_of 帰属。
+            # per-keyword で decode_replaced/encoding_of を帰属させる。
             # 共有 union 走査は global hop ごとに1回だが、absorb の per-relpath 副作用
             # （encoding_of.setdefault / decode_replaced）は「逐次版 keyword K がその hop で
             # 走査したであろう relpath」にのみ帰属させる必要がある。
@@ -118,7 +118,7 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
                     if keep_k is not None:
                         keep_k = keep_k | unsafe_rels
                         kw_results = [r for r in pass_results if r[0] in keep_k]
-                    # keep_k is None（非 ASCII 記号 → 全件走査）の場合は FULL のまま
+                    # keep_k is None（非 ASCII 記号 → 全件走査）の場合は FULL のままにする
                 absorb_results(st, kw_results, sc, stm, ghop)
             progress.hop(ghop, len(scan_symbols), len(scan_files))
             ghop += 1
@@ -129,12 +129,12 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
     finally:
         if pool is not None:
             if interrupted:
-                pool.terminate()      # 中断時は in-flight 完了を待たず即時終了
+                pool.terminate()      # 中断時は in-flight 完了を待たず即時終了する
             else:
                 pool.close()
             pool.join()
         for st in states_by_kw.values():
             try:
-                st.edge_store.close()     # ベストエフォート（後続 state を守る）
+                st.edge_store.close()     # ベストエフォートで閉じる（後続 state を守る）
             except Exception:
                 pass

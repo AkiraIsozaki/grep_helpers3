@@ -7,7 +7,7 @@ from grep_analyzer.diagnostics import Diagnostics
 
 @dataclass(frozen=True, order=True)
 class Occurrence:
-    """ヒット出現＝来歴グラフのノード。order=True で決定的ソート可能。"""
+    """ヒット出現＝来歴グラフのノードである。order=True で決定的ソート可能。"""
 
     symbol: str
     relpath: str
@@ -20,7 +20,7 @@ def _hop(o: Occurrence) -> str:
 
 
 class ProvenanceGraph:
-    """発見元→発見の有向グラフ。種から各ヒットへの単純パスを chain 化する。"""
+    """発見元→発見の有向グラフを表す。種から各ヒットへの単純パスを chain 化する。"""
 
     def __init__(self) -> None:
         self._seeds: set[Occurrence] = set()

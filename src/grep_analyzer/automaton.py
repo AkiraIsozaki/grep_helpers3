@@ -6,7 +6,7 @@ _IDENT = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567
 
 
 def build(symbols: list[str]) -> ahocorasick.Automaton | None:
-    """非空シンボル集合から Automaton を構築する。空集合/全空文字は None。"""
+    """非空シンボル集合から Automaton を構築する。空集合/全空文字は None を返す。"""
     nonempty_symbols = [s for s in symbols if s]
     if not nonempty_symbols:
         return None

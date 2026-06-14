@@ -1,4 +1,4 @@
-"""言語別 Chaser / Classifier モジュール群と Chaser registry。
+"""言語別 Chaser / Classifier モジュール群と Chaser registry をまとめる。
 
 方式α（eager import）で各 *_chaser.py を import 時に登録する。chase.py の
 dispatcher が言語に応じて以下いずれかから対応モジュールを取得する:

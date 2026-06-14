@@ -1,4 +1,4 @@
-"""snippet 行サニタイズと物理行分解。
+"""snippet 行のサニタイズと物理行分解を行う。
 
 物理行分解: 末尾改行由来の人工空要素を 1 個だけ除去する。
 区切り衝突エスケープ: 行中の ' \\n ' と同一 4 文字並びの \\ を二重化する。
@@ -8,7 +8,7 @@ from grep_analyzer.snippet._clamp import SEP
 
 
 def _physical_lines(file_text: str) -> list[str]:
-    """物理行配列。末尾改行由来の人工空要素を 1 個だけ除去（物理行定義）。"""
+    """物理行配列を返す。末尾改行由来の人工空要素を 1 個だけ除去する（物理行定義）。"""
     lines = file_text.split("\n")
     if file_text.endswith("\n") and lines and lines[-1] == "":
         lines = lines[:-1]
@@ -17,5 +17,5 @@ def _physical_lines(file_text: str) -> list[str]:
 
 def _escape_sep(line: str) -> str:
     """行中の区切り列 ' \\n '(U+0020 005C 006E 0020) と同一 4 文字並びの
-    \\(U+005C) を \\\\ へ二重化（区切りと本文の曖昧化防止）。"""
+    \\(U+005C) を \\\\ へ二重化する（区切りと本文の曖昧化を防ぐ）。"""
     return line.replace(SEP, " \\\\n ")

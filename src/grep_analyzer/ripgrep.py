@@ -1,8 +1,8 @@
-"""任意 ripgrep 一次粗フィルタ。walk の上位集合（.gitignore/
+"""任意 ripgrep 一次粗フィルタ。walk の上位集合である（.gitignore/
 
-隠し/バイナリを除外しない＝バイナリ境界は walk の _is_binary 単一）。rg
-不在/失敗は None＝フィルタ無効（全件走査）。出力不変（除外 relpath は部分
-文字列すら持たず automaton 0 ヒット確定）。
+隠し/バイナリを除外しない＝バイナリ境界は walk の _is_binary に一本化する）。rg
+不在/失敗は None＝フィルタ無効（全件走査）となる。出力は不変である（除外 relpath は
+部分文字列すら持たず automaton 0 ヒットが確定する）。
 """
 
 import hashlib
@@ -28,7 +28,7 @@ def _normalize_machine(machine: str) -> str | None:
 # オフライン wheelhouse → pip install → 展開済み site-packages のディレクトリインストール
 # を前提とする。zip-import のように実体パスを持たない場合は _vendored_rg_path() の
 # .is_file() が例外を投げ→捕捉→None へ縮退（PATH フォールバック）するのでクラッシュしない。
-# as_file()/ExitStack による実体化は本配備モデルでは不要。
+# as_file()/ExitStack による実体化は本配備モデルでは不要である。
 def _default_vendor_root():
     try:
         return _ir_files("grep_analyzer") / "vendor" / "ripgrep"
@@ -40,7 +40,7 @@ _VENDOR_ROOT = _default_vendor_root()
 
 
 def _vendored_rg_path():
-    """現 arch の同梱 rg のパス（存在すれば）。未知 arch / 不在は None。
+    """現 arch の同梱 rg のパスを返す（存在すれば）。未知 arch / 不在は None。
 
     副作用フリー（存在判定のみ）。実行ビット補完（chmod）は副作用が許される
     `_resolve_rg` が `_ensure_vendored_executable` で行う。これにより
@@ -57,8 +57,8 @@ def _vendored_rg_path():
 
 
 def _ensure_vendored_executable(path) -> bool:
-    """vendored rg の実行ビットが落ちていれば補う。副作用あり＝`_resolve_rg` 専用。
-    付けられなければ False（採用しない）。env/which には使わない。"""
+    """vendored rg の実行ビットが落ちていれば補う。副作用ありで `_resolve_rg` 専用である。
+    付けられなければ False を返す（採用しない）。env/which には使わない。"""
     try:
         if os.access(path, os.X_OK):
             return True
@@ -69,7 +69,7 @@ def _ensure_vendored_executable(path) -> bool:
 
 
 def _verify_sha256(rg_path) -> bool:
-    """併置 `<rg>.sha256`（16進1行）と実バイトの sha256 を照合。sidecar 不在は False。"""
+    """併置 `<rg>.sha256`（16進1行）と実バイトの sha256 を照合する。sidecar 不在は False。"""
     side = Path(str(rg_path) + ".sha256")
     try:
         want = side.read_text(encoding="ascii").strip().split()[0].lower()
@@ -85,18 +85,18 @@ _RG_RESOLVED = False
 
 
 def _rg_candidates(env, vendored, which):
-    """rg 候補を優先順位（env→同梱→which）で返す（None は除外）。順序の単一情報源。"""
+    """rg 候補を優先順位（env→同梱→which）で返す（None は除外）。順序の単一情報源である。"""
     return [c for c in (env, vendored, which) if c]
 
 
 def _resolve_rg_impl(env, vendored, which):
-    """採用順（env→同梱→which）で最初の非 None を返す純選択。"""
+    """採用順（env→同梱→which）で最初の非 None を返す純粋な選択である。"""
     cands = _rg_candidates(env, vendored, which)
     return cands[0] if cands else None
 
 
 def _smoke_ok(rg_path) -> bool:
-    """`rg --version` rc=0 スモーク（副作用なし＝候補バイナリを変更しない）。"""
+    """`rg --version` rc=0 でスモークする（副作用なし＝候補バイナリを変更しない）。"""
     try:
         r = subprocess.run([str(rg_path), "--version"], capture_output=True,
                            check=False, timeout=5)
@@ -139,8 +139,9 @@ def available() -> bool:
     return shutil.which("rg") is not None
 
 
-# 明示パス渡しの 1 回の rg 呼び出しに載せる引数バイト量の上限（ARG_MAX 余裕分）。
-# Linux の ARG_MAX は概ね 2MiB だが、環境変数・他の固定引数の取り分を引いて保守的に。
+# 明示パス渡しの 1 回の rg 呼び出しに載せる引数バイト量の上限で、ARG_MAX に余裕を
+# 持たせた値である。Linux の ARG_MAX は概ね 2MiB だが、環境変数・他の固定引数の取り分を
+# 引いて保守的に抑えている。
 # 超える候補数はチャンク分割し結果を union する（チャンク境界は集合に影響しない）。
 _ARG_BYTES_BUDGET = 512 * 1024
 

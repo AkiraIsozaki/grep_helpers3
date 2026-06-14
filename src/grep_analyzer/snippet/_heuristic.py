@@ -1,4 +1,4 @@
-"""sql/shell/perl/groovy ヒューリスティック span。
+"""sql/shell/perl/groovy のヒューリスティック span を切り出す。
 
 mask_literals を行ごとに適用し、句境界・文末・shell 終端で停止する。
 heredoc は mask 非対応（既知境界）。LINE_MAX で必ず有限停止。
@@ -25,7 +25,7 @@ def _balanced(text: str) -> bool:
 
 
 def heuristic_span(lines: list[str], hit: int, language: str) -> tuple[int, int]:
-    """sql/shell/perl/groovy の決定的境界。mask_literals で誤爆防止。
+    """sql/shell/perl/groovy の決定的境界を返す。mask_literals で誤爆を防ぐ。
 
     ヒット行自身は停止判定しない。各方向1行ずつ移動し、停止条件を満たした行で停止する。
     停止条件: 行末 \\ 無・括弧/クォートバランス・SQL は ; か句境界・shell は fi/done/esac 等。

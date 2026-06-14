@@ -1,11 +1,11 @@
-"""worker ローカル enc-only メモ（LRU 件数予算）。値は (enc, replaced) の小タプル。"""
+"""worker ローカル enc-only メモを提供する（LRU 件数予算）。値は (enc, replaced) の小タプルである。"""
 from collections import OrderedDict
 
-_DEFAULT_MAX = 2_000_000        # 数百万ファイルを概ね収容しつつメモリを有界化
+_DEFAULT_MAX = 2_000_000        # 数百万ファイルを概ね収容しつつメモリを有界化する
 
 
 class EncMemo:
-    """abspath -> (enc, replaced) の LRU 件数予算メモ。
+    """abspath -> (enc, replaced) の LRU 件数予算メモである。
 
     decode_with_memo が memo.get / memo[k]= で使えるよう
     dict 互換の get/__getitem__/__setitem__/__contains__ を実装する。

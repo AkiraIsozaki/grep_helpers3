@@ -1,4 +1,4 @@
-"""EngineOptions: エンジン挙動パラメータ。
+"""EngineOptions: エンジン挙動パラメータを束ねる。
 
 `run_fixedpoint` 経由でエンジン内部で参照される。`fixedpoint/__init__.py`
 から `from grep_analyzer.fixedpoint import EngineOptions` で再 export される。
@@ -10,7 +10,7 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class EngineOptions:
-    """エンジン挙動パラメータ。既定値はここが唯一の定義場所。"""
+    """エンジン挙動パラメータを保持する。既定値はここが唯一の定義場所である。"""
 
     max_depth: int = 10
     min_specificity: int = 2
@@ -31,7 +31,7 @@ class EngineOptions:
     spill_dir: Path | None = None
     decode_cache_dir: Path | None = None
     force_chunks: int = field(default=0, metadata={"test_only": True})
-    force_spill: int = field(default=0, metadata={"test_only": True})  # >0 でエッジ N 件目から強制 spill（テスト専用・本番 0）
+    force_spill: int = field(default=0, metadata={"test_only": True})  # >0 でエッジ N 件目から強制 spill する（テスト専用・本番 0）
     resume: bool = False
     output_encoding: str = "utf-8-sig"
     encoding_fallback: tuple[str, ...] = ("cp932", "euc-jp", "latin-1")

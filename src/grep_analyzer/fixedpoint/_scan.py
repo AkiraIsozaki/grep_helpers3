@@ -1,6 +1,6 @@
-"""scan worker と scan-hop オーケストレーション。
+"""scan worker と scan-hop をオーケストレーションする。
 
-`_scan_file` は multiprocessing.Pool 用のトップレベル純関数（pickle 制約）。
+`_scan_file` は multiprocessing.Pool 用のトップレベル純関数である（pickle 制約）。
 追跡状態オブジェクトは worker に渡さず、main process で構築した args タプル
 のみ渡す。`scan_hop` は呼出側から渡された必要プリミティブだけを引数に取り、
 worker からの戻り値を呼出側で追跡状態へ反映する（worker isolation 厳守）。
@@ -32,8 +32,8 @@ from grep_analyzer.model import ChaseSymbols
 def _meta_from_text(relpath, text, enc, replaced, lang_map):
     """(text,enc,replaced) ＋言語/方言判定（LANG_SAMPLE_BYTES サンプリング）を 5-tuple に組む。
 
-    file_meta と _read_meta の enc_memo 経路が共有する共通処理（出力を同一に保つ要）。
-    サンプリング窓は direct(pipeline) と同一の LANG_SAMPLE_BYTES（dispatch 一元管理）。
+    file_meta と _read_meta の enc_memo 経路が共有する共通処理である（出力を同一に保つ要）。
+    サンプリング窓は direct(pipeline) と同一の LANG_SAMPLE_BYTES に揃える（dispatch 一元管理）。
     両経路で窓が食い違うと、長い preamble 後の EXEC SQL を持つ .c が direct=proc・
     indirect=c と別言語に分類され列がブレる。
     """
@@ -52,9 +52,9 @@ def file_meta(relpath: str, raw: bytes, lang_map: dict[str, str], fallback_chain
 
 
 def meta_via_memo(enc_memo, key, relpath, raw, lang_map, fallback, fast: bool = False):
-    """file_meta と byte 同値だが enc_memo 経由で chardet を抑止する 5-tuple。
+    """file_meta と byte 同値の 5-tuple を、enc_memo 経由で chardet を抑止しつつ返す。
 
-    key は str(abspath)（未正規化）。key のブレ（例: source_root の非正規化）は
+    key は str(abspath)（未正規化）である。key のブレ（例: source_root の非正規化）は
     chardet の重複呼出を招くだけで出力には影響しない。
     """
     text, enc, replaced = decode_with_memo(enc_memo, key, raw, fallback, fast=fast)
@@ -65,7 +65,7 @@ def meta_cached(enc_memo, decode_cache, key, relpath, raw, lang_map, fallback,
                 fast: bool = False):
     """decode_cache hit を優先し、miss は meta_via_memo/file_meta と同一結果を put して返す。
 
-    seed/finalize の直呼び decode を hop 走査と同じ永続層に乗せる。出力同値。
+    seed/finalize の直呼び decode を hop 走査と同じ永続層に乗せる。出力は同値である。
     """
     if decode_cache is not None:
         dhit = decode_cache.get(key)
@@ -80,17 +80,17 @@ def meta_cached(enc_memo, decode_cache, key, relpath, raw, lang_map, fallback,
     return meta
 
 
-_FILE_CACHE_BUDGET = 64 * 1024 * 1024   # 復号テキスト常駐の上限（文字数の概算予算）
+_FILE_CACHE_BUDGET = 64 * 1024 * 1024   # 復号テキスト常駐の上限（文字数の概算予算）である。
 
 
 class _FileCache:
-    """abspath→(text,enc,replaced,language,dialect) の予算つき LRU。
+    """abspath→(text,enc,replaced,language,dialect) の予算つき LRU である。
 
     hop 間で再読込・再復号・再言語判定を抑止する。parse tree は保持しない
     （巨大ファイルでメモリが破綻するため。再 parse は lazy parse が回避する）。
     キーは abspath（run 内で一意、run 中にソースは変わらないのでメモ化は安全）。
 
-    予算は復号テキストの文字数合計の概算上限（多バイト文字では実バイトは最大数倍）。
+    予算は復号テキストの文字数合計の概算上限である（多バイト文字では実バイトは最大数倍）。
     `len(self._d) > 1` ガードにより予算超の単一巨大ファイルは常駐させる（thrash 回避）。
     並列時は worker ごとに本クラスを持つため予算は jobs 分割する。
     """
@@ -124,7 +124,7 @@ def make_file_cache() -> _FileCache:
 
 def _read_meta(relpath, abspath, lang_map, fallback, cache, enc_memo=None,
                decode_cache=None, fast: bool = False):
-    """file_meta 結果を階層キャッシュ経由で取得。
+    """file_meta 結果を階層キャッシュ経由で取得する。
 
     L1=in-memory(cache) → L2=disk(decode_cache) → miss=read+decode+detect。
     decode_cache は hop・worker・run をまたいで decode/言語判定を 1 回に固定する。
@@ -153,10 +153,10 @@ def _read_meta(relpath, abspath, lang_map, fallback, cache, enc_memo=None,
 
 def _scan_one(relpath, abspath, automaton_obj, lang_map, fallback, cache=None, enc_memo=None,
               decode_cache=None, fast: bool = False):
-    """1 ファイルを **構築済 automaton** で読み走査しヒット素片を返す純関数。
+    """1 ファイルを **構築済 automaton** で読み走査しヒット素片を返す純関数である。
 
     ストリーミング化＝親に bytes 非常駐・abspath から読む。automaton 走査はデコード済
-    テキストの各行。automaton はチャンク単位で 1 度だけ構築し全ファイルで使い回す
+    テキストの各行に対して行う。automaton はチャンク単位で 1 度だけ構築し全ファイルで使い回す
     （scan_line は iter のみで非破壊＝再利用安全）。
     """
     try:
@@ -164,7 +164,7 @@ def _scan_one(relpath, abspath, automaton_obj, lang_map, fallback, cache=None, e
             relpath, abspath, lang_map, fallback, cache, enc_memo,
             decode_cache=decode_cache, fast=fast)
     except OSError:
-        # walk 後の TOCTOU（消失/権限変化）等。run 全体を落とさず空ヒットへ降格。
+        # walk 後の TOCTOU（消失/権限変化）等が起きうる。run 全体を落とさず空ヒットへ降格する。
         return relpath, "utf-8", False, "c", "bourne", []
     found = []
     if automaton_obj is not None:
@@ -203,7 +203,7 @@ def _scan_one(relpath, abspath, automaton_obj, lang_map, fallback, cache=None, e
 
 
 def _scan_file(args):
-    """後方互換の 1 ファイル走査エントリ（symbol_list から automaton を構築して委譲）。
+    """後方互換の 1 ファイル走査エントリである（symbol_list から automaton を構築して委譲）。
 
     引数タプルは従来どおり `(relpath, abspath, symbol_list, lang_map, fallback)`。
     本番のホット経路（scan_hop）は automaton をチャンク単位で 1 度だけ構築するため
@@ -218,7 +218,7 @@ def _scan_file(args):
 # signature（= chunk 内容のハッシュ）変化を見て再構築する（symbols は temp ファイル経由）。
 # sig が内容ハッシュなので同一 symbol 集合の hop 連続では再構築をスキップできる。
 # automaton を各ワーカが明示構築するため fork/spawn いずれの start method でも動く。
-# worker LRU は Pool 永続化により hop 間で効く。予算は jobs 分割し全 worker 合計を有界化。
+# worker LRU は Pool 永続化により hop 間で効く。予算は jobs 分割し全 worker 合計を有界化する。
 _WORKER_AUTOMATON = None
 _WORKER_SIG = None
 _WORKER_LANG_MAP: dict[str, str] | None = None
@@ -230,20 +230,20 @@ _WORKER_FAST: bool = False
 
 
 def make_decode_cache(opts, namespace: str = ""):
-    """run 単位の永続デコードキャッシュ。decode_cache_dir 無指定なら run 専用 temp。"""
+    """run 単位の永続デコードキャッシュを返す。decode_cache_dir 無指定なら run 専用 temp を使う。"""
     return DecodeCache(opts.decode_cache_dir, namespace=namespace)
 
 
 def _worker_init(lang_map, fallback, jobs, decode_cache_dir, namespace, fast) -> None:
-    """Pool worker 初期化（run 単位 1 回）。automaton は chunk 到来時に遅延構築。"""
+    """Pool worker を初期化する（run 単位 1 回）。automaton は chunk 到来時に遅延構築する。"""
     global _WORKER_LANG_MAP, _WORKER_FALLBACK, _WORKER_CACHE, _WORKER_SIG, _WORKER_AUTOMATON
     global _WORKER_ENC, _WORKER_DECODE_CACHE, _WORKER_FAST
     _WORKER_LANG_MAP = lang_map
     _WORKER_FALLBACK = fallback
     _WORKER_FAST = fast
-    # worker ごとに独立 LRU を持つため予算を jobs 分割（合計常駐 ≤ 単一 run 上限）。
+    # worker ごとに独立 LRU を持つため予算を jobs 分割する（合計常駐 ≤ 単一 run 上限）。
     _WORKER_CACHE = _FileCache(budget=_FILE_CACHE_BUDGET // max(1, jobs))
-    # worker ごとに独立 LRU ＝予算を jobs 分割し合計常駐を有界化（_FileCache と同様）。
+    # enc-memo も同様に予算を jobs 分割し合計常駐を有界化する。
     _WORKER_ENC = EncMemo(max_entries=max(1, _ENC_MEMO_MAX // max(1, jobs)))
     _WORKER_SIG = None
     _WORKER_AUTOMATON = None
@@ -251,7 +251,7 @@ def _worker_init(lang_map, fallback, jobs, decode_cache_dir, namespace, fast) ->
 
 
 def _scan_file_worker(args):
-    """Pool worker 本体：signature 変化時のみ automaton を再構築して 1 ファイル走査。"""
+    """Pool worker 本体：signature 変化時のみ automaton を再構築して 1 ファイルを走査する。"""
     relpath, abspath, sig, sym_path = args
     global _WORKER_AUTOMATON, _WORKER_SIG
     if sig != _WORKER_SIG:
@@ -265,7 +265,7 @@ def _scan_file_worker(args):
 
 
 def _map_chunksize(n_files: int, jobs: int) -> int:
-    """pool.map 用の決定的 chunksize（順序保存ゆえ出力不変）。
+    """pool.map 用の決定的 chunksize を返す（順序保存ゆえ出力不変）。
 
     既定の chunksize=1 はファイル毎 IPC でディスパッチ過多。worker あたり概ね
     4 バッチに割れる粒度にして round-trip を削減する。
@@ -286,7 +286,7 @@ def make_pool(opts, namespace: str = ""):
 
 
 def kinds_of(chase_symbols: ChaseSymbols) -> dict[str, str]:
-    """ChaseSymbols の各シンボル→種別。同名は constant 優先（最後に書く）。"""
+    """ChaseSymbols の各シンボルを種別へ写す。同名は constant を優先する（最後に書く）。"""
     out: dict[str, str] = {}
     for kind, names in (("setter", chase_symbols.setters), ("getter", chase_symbols.getters),
                         ("var", chase_symbols.vars), ("constant", chase_symbols.constants)):
@@ -305,7 +305,7 @@ def scan_hop(scan_symbols, scan_files, opts, nchunks, file_cache=None, pool=None
     sorted(hits_by_relpath) でソートするため pool 返却順は最終 TSV に影響しない）。
 
     progress（Progress | None）と hop_no を受け取り、ファイル完了ごとに tick を呼ぶ。
-    progress が None の場合（デフォルト）は従来どおり無音。
+    progress が None の場合（デフォルト）は従来どおり無音である。
 
     戻り値: (pass_results, n_actual_chunks)
       - pass_results: [(relpath, enc, replaced, language, dialect, found)] の list

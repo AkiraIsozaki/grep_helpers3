@@ -14,13 +14,13 @@ _JSP_DIRECTIVE = re.compile(r"<%@.*?%>", re.DOTALL)
 _JSP_ACTION = re.compile(r"</?jsp:[^>]*?/?>", re.DOTALL)
 _JSP_CODE = re.compile(r"<%[=!]?(.*?)%>", re.DOTALL)
 _EL = re.compile(r"[$#]\{(.*?)\}", re.DOTALL)
-# JSTL 関数接頭辞（fn: 等）除去。best-effort。
+# JSTL 関数接頭辞（fn: 等）を除去する。best-effort。
 # EL 内の URL プロトコル `http:` や三項 `b:` も除去しうるが稀なため許容。
 _EL_PREFIX = re.compile(r"\b[A-Za-z_]\w*:")
 
 
 def _blank(text: str) -> str:
-    """改行を保ち他を空白へ（長さ保存）。"""
+    """改行を保ち他を空白へ置換する（長さ保存）。"""
     return "".join("\n" if c == "\n" else " " for c in text)
 
 
@@ -44,7 +44,7 @@ def extract_jsp_java(source: str) -> str:
 
 
 def jsp_region_span(file_text: str, lineno: int):
-    """ヒット行を含む <%…%> 系ブロックの行スパン [s,e]（0始まり）。
+    """ヒット行を含む <%…%> 系ブロックの行スパン [s,e] を返す（0始まり）。
 
     区間外は None（呼出側で 1 行フォールバック）。
     区間検出は extract_jsp_java と同じ _JSP_CODE 正規表現を共有する（既知限界）。
@@ -58,7 +58,7 @@ def jsp_region_span(file_text: str, lineno: int):
     return None
 
 
-# Angular 固有束縛マーカ（{{ 単独は Vue/Handlebars と重複するため含めない）
+# Angular 固有束縛マーカである（{{ 単独は Vue/Handlebars と重複するため含めない）
 _ANGULAR_RE = re.compile(
     r"""\*ng[\w-]+|\[\(?[\w.$-]+\)?\]\s*=|\([\w.$-]+\)\s*=|routerLink|formControl|ngModel""")
 
@@ -107,7 +107,7 @@ _INLINE_TEMPLATE = re.compile(r"\btemplate\s*:\s*`(.*?)`", re.DOTALL)
 
 
 def inline_template_spans(ts_source: str) -> list[tuple[int, int]]:
-    """inline template 内容（group1）の行スパン [(s,e)]（0始まり）。"""
+    """inline template 内容（group1）の行スパン [(s,e)] を返す（0始まり）。"""
     return [(ts_source.count("\n", 0, m.start(1)), ts_source.count("\n", 0, m.end(1)))
             for m in _INLINE_TEMPLATE.finditer(ts_source)]
 

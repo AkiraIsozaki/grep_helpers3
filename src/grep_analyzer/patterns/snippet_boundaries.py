@@ -1,7 +1,7 @@
-"""スニペット切り出しの境界判定用 regex。
+"""スニペット切り出しの境界判定用 regex を定義する。
 
 `heuristic_span` が sql / shell / perl / groovy のスパン停止条件として参照する。
-判定対象はマスク後の行末・句境界・shell 終端構文。
+判定対象はマスク後の行末・句境界・shell 終端構文である。
 """
 
 import re

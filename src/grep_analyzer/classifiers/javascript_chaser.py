@@ -1,4 +1,4 @@
-"""JavaScript AST chaser（field-directed）。
+"""JavaScript の AST chaser を提供する（field-directed）。
 
 `handle_binding` / `_BINDING` は typescript_chaser と共有する。
 """

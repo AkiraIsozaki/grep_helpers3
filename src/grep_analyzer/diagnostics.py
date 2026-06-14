@@ -1,12 +1,12 @@
-"""非致命の診断を集約する。先頭にカテゴリ別件数サマリ、続いて詳細。"""
+"""非致命の診断を集約する。先頭にカテゴリ別件数サマリを置き、続いて詳細を並べる。"""
 
 from collections import Counter, defaultdict
 
 SECTION_8_4_CATEGORIES = frozenset({"symbol_rejected", "getter_setter_no_expand"})
 
 # カテゴリごとの詳細保持上限。カウント(_counts)は常に全件正確だが、
-# 明細(_detail)はこの件数で頭打ちにして OOM を防ぐ。実運用・全テストで到達しない高さ。
-# render の縮約（detail_limit）とは独立。
+# 明細(_detail)はこの件数で頭打ちにして OOM を防ぐ。実運用・全テストでは到達しない高さに設定している。
+# render の縮約（detail_limit）とは独立である。
 _MAX_RETAINED = 200_000
 
 
@@ -52,7 +52,7 @@ class Diagnostics:
         return dict(self._counts)
 
     def render(self, detail_limit: int = 0, exempt=None) -> str:
-        """診断出力スキーマ。detail_limit=0 は無制限＝保持上限内なら現行と完全同一。"""
+        """診断出力スキーマに従って描画する。detail_limit=0 は無制限＝保持上限内なら現行と完全同一。"""
         is_exempt = (lambda c: _is_exempt(c, exempt)) \
             if exempt is not None else (lambda c: False)  # prov_ ロジック単一源
         out = ["# summary"]

@@ -1,7 +1,7 @@
-"""分類器の共通型と Chaser プロトコル。
+"""分類器の共通型と Chaser プロトコルを定義する。
 
-ClassifyResult: direct 行の分類結果型。
-Chaser: 言語別 Chaser サブモジュールが実装する抽出 IF。
+ClassifyResult は direct 行の分類結果型である。
+Chaser は言語別 Chaser サブモジュールが実装する抽出 IF である。
 """
 
 from typing import Callable, Protocol
@@ -12,7 +12,7 @@ ClassifyResult = tuple[str, str]
 
 
 class Chaser(Protocol):
-    """言語別 Chaser モジュールの抽出 IF。
+    """言語別 Chaser モジュールの抽出 IF である。
 
     各 `*_chaser.py` がモジュールレベルで `extract` / `mask` を関数として
     公開し、`_CHASERS[language] = module` で登録する。属性形式の Protocol
@@ -21,19 +21,19 @@ class Chaser(Protocol):
     """
 
     extract: Callable[[str, str], ChaseSymbols]
-    """(dialect, line) → ChaseSymbols。line は生行（マスクは extract 内で実施）。"""
+    """(dialect, line) → ChaseSymbols。line は生行であり、マスクは extract 内で実施する。"""
 
     mask: Callable[[str], str]
     """line → masked_line。同字数空白へ置換する。"""
 
 
 class ASTChaser(Protocol):
-    """AST 言語 chaser の抽出 IF。
+    """AST 言語 chaser の抽出 IF である。
 
-    parse は呼出側（chase.py / worker）。parse 済 root から
+    parse は呼出側（chase.py / worker）が行う。parse 済 root から
     束縛名のみ（name:/left: フィールド）を field-directed に抽出する。
     `language` は ts/tsx の grammar 変種・束縛規則の選択に使う。
     """
 
     extract_tree: Callable[[str, object, int], ChaseSymbols]
-    """(language, root, lineno) → ChaseSymbols。root は parse 済 root_node。"""
+    """(language, root, lineno) → ChaseSymbols。root は parse 済 root_node である。"""

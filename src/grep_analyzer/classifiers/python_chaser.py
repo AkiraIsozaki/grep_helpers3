@@ -1,7 +1,7 @@
-"""Python AST chaser（field-directed）。
+"""Python の AST chaser を提供する（field-directed）。
 
-ASTChaser プロトコル準拠。parse は呼出側。
-束縛導入ノードから name:/left: フィールドのみを抽出（RHS/型は読まない）。
+ASTChaser プロトコルに準拠する。parse は呼出側が行う。
+束縛導入ノードから name:/left: フィールドのみを抽出する（RHS/型は読まない）。
 """
 import re
 

@@ -1,4 +1,4 @@
-"""scan ループ終了後の indirect Hit 列構築。
+"""scan ループ終了後に indirect Hit 列を構築する。
 
 edge_store の (parent, child) を graph に追加し、終端 Occurrence ごとに
 chain_to を列挙して indirect Hit を生成する。seed と同じ (relpath, lineno) は
@@ -42,7 +42,7 @@ def build_indirect_hits(state: ChaseState) -> list[Hit]:
                     opts.lang_map, list(opts.encoding_fallback),
                     fast=opts.fast_encoding)
             else:
-                # relpath 未知＝abspath 無し。空 bytes の meta を直接生成（memo 不要）。
+                # relpath 未知＝abspath が無い。空 bytes の meta を直接生成する（memo 不要）。
                 text, enc, replaced, lang, dialect = file_meta(
                     c.relpath, b"", opts.lang_map,
                     fallback_chain=list(opts.encoding_fallback),
@@ -54,7 +54,7 @@ def build_indirect_hits(state: ChaseState) -> list[Hit]:
         # occurrence 単位の使い捨てパース木キャッシュ：同一 occurrence の classify_hit と
         # build_snippet（および全 chain）が 1 度のパースを共有する。occurrence をまたいで
         # 木を常駐させない（メモリは常時 1 木分）。sorted_unique は (symbol,relpath,lineno) 順
-        # なので relpath がまとまらず、relpath 単位常駐にしても局所性がないため使い捨てで十分。
+        # なので relpath がまとまらず、relpath 単位常駐にしても局所性がないため使い捨てで十分である。
         tree_cache: dict = {}
         lines = line_cache[c.relpath]
         line = lines[c.lineno - 1] if 0 <= c.lineno - 1 < len(lines) else ""

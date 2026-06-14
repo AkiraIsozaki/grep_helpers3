@@ -1,7 +1,7 @@
-"""TypeScript / TSX AST chaser（JS 規則＋enum/readonly field）。
+"""TypeScript / TSX の AST chaser を提供する（JS 規則＋enum/readonly field）。
 
-JS 規則は javascript_chaser から再利用する。tsx は language 引数で grammar 変種を切替え
-（parse は呼出側。本モジュールは root のみ受ける）。
+JS 規則は javascript_chaser から再利用する。tsx は language 引数で grammar 変種を切り替える
+（parse は呼出側が行い、本モジュールは root のみ受ける）。
 """
 from grep_analyzer.classifiers.javascript_chaser import _BINDING as _JS_BINDING
 from grep_analyzer.classifiers.javascript_chaser import handle_binding as _handle_js

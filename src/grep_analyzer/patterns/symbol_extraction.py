@@ -1,11 +1,11 @@
-"""言語別シンボル抽出 regex。
+"""言語別シンボル抽出 regex を定義する。
 
 マスク後の行から代入左辺・const 定義等を切り出すために使う。
 
 - SQL (Oracle/PL-SQL): `name [CONSTANT] [TYPE] := …` の先頭 id。CONSTANT は定数。バインド `:v`／置換 `&v` は除外
 - Shell (bourne): 行頭 `var=` の左辺
 - Shell (cshell): `set v =` / `setenv V` / `@ v =` の左辺
-注: Java/C は AST 経路のため regex 非対象。
+注: Java/C は AST 経路のため regex の対象外である。
 """
 
 import re
