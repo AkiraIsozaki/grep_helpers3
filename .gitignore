@@ -6,6 +6,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
+.venv/
+venv/
 # `python -m build`（vendor packaging テスト等）が生成する成果物。
 # wheelhouse/ はコミット対象だが build/・dist/ は成果物なので無視。
 build/
