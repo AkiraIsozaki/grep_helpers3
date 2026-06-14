@@ -61,10 +61,14 @@ def run(
     # --- 1. walk + 実効 use_ripgrep 解決（walk 由来診断は walk_diag に集約） ---
     walk_diag = Diagnostics()
     # collect_files_ex: 64KiB NUL prefix（collect_files の 8KiB より厳格）＋ total_bytes/unsafe_rels を prefilter 判定に利用
+    import sys
+    def _walk_cb(n):
+        print(f"[grep_analyzer] walking {n} files...", file=sys.stderr, flush=True)
     files, total_bytes, unsafe_rels = collect_files_ex(
         Path(source_root), include=opts.include, exclude=opts.exclude,
         follow_symlinks=opts.follow_symlinks,
-        max_file_bytes=opts.max_file_bytes, diag=walk_diag)
+        max_file_bytes=opts.max_file_bytes, diag=walk_diag,
+        on_progress=_walk_cb if opts.progress == "on" else None)
     explicit = opts.use_ripgrep
     effective = _effective_use_ripgrep(
         explicit, total_bytes, opts.ripgrep_threshold_bytes)

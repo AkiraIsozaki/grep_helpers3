@@ -252,3 +252,14 @@ def test_walk_classifiedとwalk_filesのstage1パリティ(tmp_path):
     assert legacy == classified
     # 期待: large/binary/excluded/include対象外 が落ち、ok のみ昇順で残る。
     assert legacy == ["a.c", "sub/b.c", "sub/deep/c.c"]
+
+
+def test_collect_files_ex_calls_on_progress(tmp_path):
+    from grep_analyzer.walk import collect_files_ex, DEFAULT_EXCLUDE
+    for i in range(5):
+        (tmp_path / f"f{i}.c").write_bytes(b"int x;\n")
+    seen = []
+    collect_files_ex(tmp_path, include=[], exclude=list(DEFAULT_EXCLUDE),
+                     follow_symlinks=False, max_file_bytes=1_000_000, diag=None,
+                     on_progress=lambda n: seen.append(n), progress_every=2)
+    assert seen and seen[-1] >= 1
