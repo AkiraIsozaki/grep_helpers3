@@ -3,21 +3,51 @@
 SJIS 系が多い 60GB 級ソース群で `grep_analyzer` を実用的な時間で回すための設定。
 設計の背景は `docs/superpowers/specs/2026-06-14-grep-analyzer-perf-design.md` を参照。
 
-## 推奨実行例
+## 推奨実行例（そのまま貼れる版）
 
-```
-grep_analyzer \
-  --jobs <物理コア数> \
-  --decode-cache-dir /var/tmp/ga_decode_cache \
+`grep_analyzer` をインストールした環境（venv 等）で、上の3変数だけ自分の値に書き換えて実行する。
+**出力はすべて従来とバイト同一**（速くなるだけ）。
+
+```bash
+# ==== ここ3つだけ書き換える ====
+SRC=/path/to/source_root        # 解析対象ソースのルート
+GREP_IN=/path/to/grep_inputs    # キーワードごとの *.grep を置いたディレクトリ
+OUT=$PWD/ga_out                 # 出力先（TSV / diagnostics.txt / manifest）
+
+# 復号キャッシュの置き場。/var など共有/システム領域は使わない。
+# 自分が書ける大容量パスにする（60GB コーパスで概ね ~90GB 使う＝復号テキストを貯める）。
+# 既定は出力の隣。容量が足りなければスクラッチ/作業領域の絶対パスに変える。
+CACHE=$OUT/../ga_decode_cache
+
+mkdir -p "$OUT" "$CACHE"
+python -m grep_analyzer \
+  --jobs "$(nproc)" \
+  --decode-cache-dir "$CACHE" \
   --progress on \
-  --input  <*.grep を置いたディレクトリ> \
-  --output <出力先> \
-  --source-root <ソースルート> \
-  [--max-depth 4] \
-  [--exclude '<vendor/生成物の glob>'] \
-  [--resume] \
-  [--fast-encoding] \
-  [--no-perkw-diag]
+  --input "$GREP_IN" \
+  --output "$OUT" \
+  --source-root "$SRC"
+```
+
+ripgrep prefilter は 60GB なら自動 ON（閾値 1GiB・rg 同梱）。`--progress on` で walk 件数と
+hop 内の `scanning N/total` が stderr に出るので、止まっていないか確認できる。
+2 回目以降は同じ `--decode-cache-dir` を指せば、変更の無いファイルの再復号を丸ごと省ける。
+
+### さらに速くしたい場合（出力が少し変わる opt-in）
+
+SJIS 主体で chardet が重いなら `--fast-encoding`、間接参照を深追いしないなら `--max-depth` を下げる。
+診断の per-keyword 帰属が不要なら `--no-perkw-diag`。巨大な生成物等は `--exclude` で削る。
+
+```bash
+python -m grep_analyzer \
+  --jobs "$(nproc)" \
+  --decode-cache-dir "$CACHE" \
+  --progress on \
+  --fast-encoding \
+  --max-depth 4 \
+  --no-perkw-diag \
+  --exclude 'node_modules/**' --exclude '**/*.min.js' \
+  --input "$GREP_IN" --output "$OUT" --source-root "$SRC"
 ```
 
 ## フラグの効果と出力への影響
