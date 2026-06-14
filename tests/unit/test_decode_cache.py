@@ -9,7 +9,7 @@ def _src(tmp_path: Path, name: str, data: bytes) -> Path:
     return p
 
 
-def test_put_then_get_roundtrip(tmp_path):
+def test_putした内容はgetで同一に取り出せる(tmp_path):
     cache = DecodeCache(tmp_path / "cache")
     src = _src(tmp_path, "a.c", b"int main(){}\n")
     meta = ("int main(){}\n", "utf-8", False, "c", "bourne")
@@ -17,13 +17,13 @@ def test_put_then_get_roundtrip(tmp_path):
     assert cache.get(str(src)) == meta
 
 
-def test_get_miss_returns_none(tmp_path):
+def test_未登録ファイルのgetはNoneを返す(tmp_path):
     cache = DecodeCache(tmp_path / "cache")
     src = _src(tmp_path, "a.c", b"x\n")
     assert cache.get(str(src)) is None
 
 
-def test_invalidated_on_mtime_change(tmp_path):
+def test_ソース更新時はサイズmtime不一致でキャッシュミスする(tmp_path):
     import os
     cache = DecodeCache(tmp_path / "cache")
     src = _src(tmp_path, "a.c", b"old\n")
@@ -34,7 +34,7 @@ def test_invalidated_on_mtime_change(tmp_path):
     assert cache.get(str(src)) is None
 
 
-def test_body_with_newlines_roundtrips(tmp_path):
+def test_改行を含む本文も完全に往復する(tmp_path):
     cache = DecodeCache(tmp_path / "cache")
     src = _src(tmp_path, "b.sql", b"a\nb\nc\n")
     meta = ("行1\n行2\n末尾なし", "cp932", True, "sql", "bourne")
@@ -42,13 +42,13 @@ def test_body_with_newlines_roundtrips(tmp_path):
     assert cache.get(str(src)) == meta
 
 
-def test_missing_source_put_is_noop(tmp_path):
+def test_存在しないソースへのputは無効でgetもNoneを返す(tmp_path):
     cache = DecodeCache(tmp_path / "cache")
     cache.put(str(tmp_path / "does_not_exist"), ("X", "utf-8", False, "c", "bourne"))
     assert cache.get(str(tmp_path / "does_not_exist")) is None
 
 
-def test_concurrent_puts_idempotent(tmp_path):
+def test_同一内容の多重putは冪等(tmp_path):
     cache = DecodeCache(tmp_path / "cache")
     src = _src(tmp_path, "c.c", b"same\n")
     meta = ("same\n", "utf-8", False, "c", "bourne")

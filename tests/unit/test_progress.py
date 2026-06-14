@@ -27,7 +27,7 @@ def test_未知levelはoff扱いで無音():
     assert buf.getvalue() == ""
 
 
-def test_tick_emits_every_threshold():
+def test_tickはeveryごとに走査途中の件数をstderrへ出す():
     buf = io.StringIO()
     p = Progress("on", stream=buf, every=3)
     p.start(10)
@@ -38,7 +38,7 @@ def test_tick_emits_every_threshold():
     assert "1/10" not in out
 
 
-def test_tick_silent_when_off():
+def test_progressがoffならtickは無音():
     buf = io.StringIO()
     p = Progress("off", stream=buf, every=1)
     p.start(10)

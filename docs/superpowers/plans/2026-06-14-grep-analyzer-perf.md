@@ -10,7 +10,9 @@
 
 参照 spec: `docs/superpowers/specs/2026-06-14-grep-analyzer-perf-design.md`
 
-**全体の不変条件（各タスクの受け入れ条件）:** 既定（フラグOFF）で既存テストが無改変で通る。実行: `pytest -q`。
+**全体の不変条件（各タスクの受け入れ条件）:** 既定（フラグOFF）で既存テストが無改変で通る。テスト実行は必ず `. .venv/bin/activate && python -m pytest -q`（venv は wheelhouse からオフライン構築済み。健全時 638 passed ベースライン）。
+
+**テスト命名規約（必須）:** 本計画中のテスト関数名は英語で書いてあるが、実装時は**必ず日本語の振る舞い名 `test_<期待される振る舞い>`** に翻案すること（`.claude/skills/writing-tests.md` 準拠。how でなく what、並べて仕様書として読める）。例: `test_putした内容はgetで同一に取り出せる`、`test_decode_cacheにhitすれば再decodeしない`。
 
 **実行順の注意:** Task S1/S2（ステータス可視化）を**最初に**実装する。長時間 run の「進行中か停止中か」をすぐ見えるようにするため、他の性能タスクより前に入れる。S1/S2 は decode キャッシュ等と独立。
 

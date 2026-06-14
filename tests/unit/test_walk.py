@@ -254,7 +254,7 @@ def test_walk_classifiedとwalk_filesのstage1パリティ(tmp_path):
     assert legacy == ["a.c", "sub/b.c", "sub/deep/c.c"]
 
 
-def test_collect_files_ex_calls_on_progress(tmp_path):
+def test_walk中は受理件数をon_progressで通知する(tmp_path):
     from grep_analyzer.walk import collect_files_ex, DEFAULT_EXCLUDE
     for i in range(5):
         (tmp_path / f"f{i}.c").write_bytes(b"int x;\n")
