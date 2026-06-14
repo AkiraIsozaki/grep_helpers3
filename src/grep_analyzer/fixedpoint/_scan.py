@@ -101,29 +101,37 @@ def make_file_cache() -> _FileCache:
     return _FileCache()
 
 
-def _read_meta(relpath, abspath, lang_map, fallback, cache, enc_memo=None):
+def _read_meta(relpath, abspath, lang_map, fallback, cache, enc_memo=None,
+               decode_cache=None):
     """file_meta 結果を階層キャッシュ経由で取得。
 
-    上段=テキストキャッシュ(cache)、下段=enc-memo(enc_memo)。cache hit は即返す。
-    cache miss かつ enc_memo がある場合は decode_with_memo で chardet を回避し、
-    file_meta と **byte 同値** の 5 タプルを LANG_SAMPLE_BYTES サンプリングで再構築する。
-    cache=None は従来どおり毎回読込（enc_memo の効果は decode 段にのみ及ぶ）。
+    L1=in-memory(cache) → L2=disk(decode_cache) → miss=read+decode+detect。
+    decode_cache は hop・worker・run をまたいで decode/言語判定を 1 回に固定する。
     """
     if cache is not None:
         hit = cache.get(abspath)
         if hit is not None:
-            return hit                       # 5要素 (text,enc,replaced,language,dialect)
+            return hit
+    if decode_cache is not None:
+        dhit = decode_cache.get(abspath)
+        if dhit is not None:
+            if cache is not None:
+                cache.put(abspath, dhit)
+            return dhit
+    raw = Path(abspath).read_bytes()
     if enc_memo is None:
-        meta = file_meta(relpath, Path(abspath).read_bytes(), lang_map, fallback_chain=fallback)
+        meta = file_meta(relpath, raw, lang_map, fallback_chain=fallback)
     else:
-        raw = Path(abspath).read_bytes()
         meta = meta_via_memo(enc_memo, abspath, relpath, raw, lang_map, fallback)
+    if decode_cache is not None:
+        decode_cache.put(abspath, meta)
     if cache is not None:
         cache.put(abspath, meta)
     return meta
 
 
-def _scan_one(relpath, abspath, automaton_obj, lang_map, fallback, cache=None, enc_memo=None):
+def _scan_one(relpath, abspath, automaton_obj, lang_map, fallback, cache=None, enc_memo=None,
+              decode_cache=None):
     """1 ファイルを **構築済 automaton** で読み走査しヒット素片を返す純関数。
 
     ストリーミング化＝親に bytes 非常駐・abspath から読む。automaton 走査はデコード済
@@ -132,7 +140,8 @@ def _scan_one(relpath, abspath, automaton_obj, lang_map, fallback, cache=None, e
     """
     try:
         text, enc, replaced, language, dialect = _read_meta(
-            relpath, abspath, lang_map, fallback, cache, enc_memo)
+            relpath, abspath, lang_map, fallback, cache, enc_memo,
+            decode_cache=decode_cache)
     except OSError:
         # walk 後の TOCTOU（消失/権限変化）等。run 全体を落とさず空ヒットへ降格。
         return relpath, "utf-8", False, "c", "bourne", []
@@ -244,7 +253,7 @@ def kinds_of(chase_symbols: ChaseSymbols) -> dict[str, str]:
 
 
 def scan_hop(scan_symbols, scan_files, opts, nchunks, file_cache=None, pool=None,
-             enc_memo=None, progress=None, hop_no=0):
+             enc_memo=None, progress=None, hop_no=0, decode_cache=None):
     """1 hop の走査を chunks に分けて実行し、relpath 単位の集約済み結果を返す。
 
     `nchunks=1` の場合は単一 chunk として全 symbol を 1 度に走査する。`nchunks>1`
@@ -299,7 +308,8 @@ def scan_hop(scan_symbols, scan_files, opts, nchunks, file_cache=None, pool=None
             for i, (relpath, abspath) in enumerate(scan_files, start=1):
                 res.append(_scan_one(relpath, str(abspath), automaton_obj,
                                      opts.lang_map, fallback,
-                                     cache=file_cache, enc_memo=enc_memo))
+                                     cache=file_cache, enc_memo=enc_memo,
+                                     decode_cache=decode_cache))
                 scanned_count += 1
                 if progress is not None:
                     progress.tick(hop_no, scanned_count)

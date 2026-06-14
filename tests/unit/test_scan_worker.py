@@ -31,3 +31,26 @@ def test_読めるファイルは従来どおりヒットを返す(tmp_path):
     rel, enc, replaced, lang, dialect, found = _scan_one(
         "A.java", str(f), auto, {}, ["cp932", "euc-jp", "latin-1"])
     assert any(sym == "K1" for sym, *_ in found)
+
+
+def test_read_metaはdecode_cacheにhitすれば再decodeしない(tmp_path, monkeypatch):
+    from grep_analyzer.fixedpoint import _scan
+    from grep_analyzer.decode_cache import DecodeCache
+
+    src = tmp_path / "a.c"
+    src.write_bytes(b"int x;\n")
+    dc = DecodeCache(tmp_path / "cache")
+    meta = ("int x;\n", "utf-8", False, "c", "bourne")
+    dc.put(str(src), meta)
+
+    calls = {"n": 0}
+    real = _scan.decode_bytes
+
+    def spy(data, chain):
+        calls["n"] += 1
+        return real(data, chain)
+    monkeypatch.setattr(_scan, "decode_bytes", spy)
+
+    got = _scan._read_meta("a.c", str(src), {}, ["cp932"], None, decode_cache=dc)
+    assert got == meta
+    assert calls["n"] == 0
