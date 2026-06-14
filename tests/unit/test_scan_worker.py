@@ -33,6 +33,14 @@ def test_読めるファイルは従来どおりヒットを返す(tmp_path):
     assert any(sym == "K1" for sym, *_ in found)
 
 
+def test_map_chunksizeは決定的で常に1以上_ファイル数が多いと1超になる():
+    from grep_analyzer.fixedpoint._scan import _map_chunksize
+    assert _map_chunksize(0, 4) == 1
+    assert _map_chunksize(1000, 4) >= 1
+    assert _map_chunksize(1000, 4) == _map_chunksize(1000, 4)
+    assert _map_chunksize(100000, 8) > 1
+
+
 def test_read_metaはdecode_cacheにhitすれば再decodeしない(tmp_path, monkeypatch):
     from grep_analyzer.fixedpoint import _scan
     from grep_analyzer.decode_cache import DecodeCache

@@ -260,6 +260,17 @@ def _scan_file_worker(args):
                      decode_cache=_WORKER_DECODE_CACHE)
 
 
+def _map_chunksize(n_files: int, jobs: int) -> int:
+    """pool.map 用の決定的 chunksize（順序保存ゆえ出力不変）。
+
+    既定の chunksize=1 はファイル毎 IPC でディスパッチ過多。worker あたり概ね
+    4 バッチに割れる粒度にして round-trip を削減する。
+    """
+    if n_files <= 0:
+        return 1
+    return max(1, n_files // (max(1, jobs) * 4))
+
+
 def make_pool(opts, namespace: str = ""):
     """jobs>1 のとき run 単位の Pool を 1 度だけ生成する（jobs<=1 は None）。"""
     if opts.jobs <= 1:
@@ -323,7 +334,7 @@ def scan_hop(scan_symbols, scan_files, opts, nchunks, file_cache=None, pool=None
                 args = [(relpath, str(abspath), sig, sym_path)
                         for relpath, abspath in scan_files]
                 res = []
-                for item in pool.imap_unordered(_scan_file_worker, args, chunksize=1):
+                for item in pool.imap_unordered(_scan_file_worker, args, chunksize=_map_chunksize(len(args), opts.jobs)):
                     res.append(item)
                     scanned_count += 1
                     if progress is not None:
