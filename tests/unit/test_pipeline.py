@@ -111,6 +111,21 @@ def test_file列は絶対_chainは相対_snippetは構文単位(tmp_path):
     assert cells[10] == '  static final String K = \\n     "K";'  # snippet 多行
 
 
+def test_大物ファイル除外時はstderrに警告を出す(tmp_path, capsys):
+    from grep_analyzer.pipeline import run
+    from grep_analyzer.fixedpoint import EngineOptions
+    from grep_analyzer.walk import DEFAULT_EXCLUDE
+    src = tmp_path / "src"; src.mkdir()
+    (src / "big.c").write_bytes(b"x" * 50)
+    (src / "small.c").write_bytes(b"int foo;\n")
+    inp = tmp_path / "in"; inp.mkdir()
+    (inp / "foo.grep").write_bytes(f"{src/'small.c'}:1:int foo;\n".encode())
+    run(inp, tmp_path / "o", src,
+        EngineOptions(jobs=1, exclude=list(DEFAULT_EXCLUDE), max_file_bytes=10))
+    err = capsys.readouterr().err
+    assert "big.c" in err or "skipped" in err.lower() or "除外" in err
+
+
 def test_同一decode_cache_dirなら2回目のrunは元ソースを再decodeしない(tmp_path, monkeypatch):
     from grep_analyzer.pipeline import run
     from grep_analyzer.fixedpoint import EngineOptions

@@ -39,3 +39,11 @@ def test_is_exempt_prov_プレフィックスと完全一致集合():
     assert _is_exempt("symbol_rejected")          # 完全一致
     assert _is_exempt("getter_setter_no_expand")  # 完全一致
     assert not _is_exempt("walk_skipped_large")   # 非 §8.4
+
+
+def test_countsはカテゴリ別の総件数を返す():
+    from grep_analyzer.diagnostics import Diagnostics
+    d = Diagnostics()
+    d.add("walk_skipped_large", "big.c")
+    d.add("walk_skipped_large", "huge.sql")
+    assert d.counts().get("walk_skipped_large") == 2

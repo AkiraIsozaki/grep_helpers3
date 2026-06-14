@@ -215,4 +215,10 @@ def run(
         diag.render(detail_limit=opts.diagnostics_detail_limit,
                     exempt=SECTION_8_4_CATEGORIES),
         encoding="utf-8", errors="backslashreplace")
+    import sys
+    n_large = walk_diag.counts().get("walk_skipped_large", 0)
+    if n_large:
+        print(f"[grep_analyzer] 警告: {n_large} 件のファイルが "
+              f"--max-file-bytes({opts.max_file_bytes}) 超で除外されました "
+              f"（詳細は diagnostics.txt の walk_skipped_large）", file=sys.stderr)
     return 0

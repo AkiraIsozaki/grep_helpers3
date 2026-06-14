@@ -47,6 +47,10 @@ class Diagnostics:
                 if room > 0:
                     lst.extend(msgs[:room])
 
+    def counts(self) -> dict[str, int]:
+        """カテゴリ別の総件数（全件正確）。"""
+        return dict(self._counts)
+
     def render(self, detail_limit: int = 0, exempt=None) -> str:
         """診断出力スキーマ。detail_limit=0 は無制限＝保持上限内なら現行と完全同一。"""
         is_exempt = (lambda c: _is_exempt(c, exempt)) \
