@@ -76,7 +76,8 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
                 opts=opts, budget=next(iter(states_by_kw.values())).budget)
             pass_results, n_actual_chunks = scan_hop(
                 scan_symbols, scan_files, opts, nchunks,
-                file_cache=file_cache, pool=pool, enc_memo=enc_memo)
+                file_cache=file_cache, pool=pool, enc_memo=enc_memo,
+                progress=progress, hop_no=ghop)
             # automaton_split は共有走査ゆえ global hop ごとに1回（出力中立）。
             # その hop に live 記号（sc|stm）を持つ keyword のみに付与する
             # （逐次版で走査しない kw は automaton_split を記録しないため）。

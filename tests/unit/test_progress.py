@@ -25,3 +25,22 @@ def test_未知levelはoff扱いで無音():
     buf = io.StringIO()
     Progress("verbose-unknown", buf).hop(1, 1, 1)
     assert buf.getvalue() == ""
+
+
+def test_tick_emits_every_threshold():
+    buf = io.StringIO()
+    p = Progress("on", stream=buf, every=3)
+    p.start(10)
+    for i in range(1, 8):
+        p.tick(hop=1, scanned=i)
+    out = buf.getvalue()
+    assert out.count("scanning") >= 2
+    assert "1/10" not in out
+
+
+def test_tick_silent_when_off():
+    buf = io.StringIO()
+    p = Progress("off", stream=buf, every=1)
+    p.start(10)
+    p.tick(hop=1, scanned=5)
+    assert buf.getvalue() == ""

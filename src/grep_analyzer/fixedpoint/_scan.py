@@ -243,12 +243,17 @@ def kinds_of(chase_symbols: ChaseSymbols) -> dict[str, str]:
     return out
 
 
-def scan_hop(scan_symbols, scan_files, opts, nchunks, file_cache=None, pool=None, enc_memo=None):
+def scan_hop(scan_symbols, scan_files, opts, nchunks, file_cache=None, pool=None,
+             enc_memo=None, progress=None, hop_no=0):
     """1 hop の走査を chunks に分けて実行し、relpath 単位の集約済み結果を返す。
 
     `nchunks=1` の場合は単一 chunk として全 symbol を 1 度に走査する。`nchunks>1`
-    の場合は chunk 別に Pool.map し、relpath 単位で found を集約してから
-    (lineno, symbol) で再ソートする。いずれの経路も出力 byte は同値。
+    の場合は chunk 別に Pool.imap_unordered し、relpath 単位で found を集約してから
+    (lineno, symbol) で再ソートする。imap_unordered は出力不変（hits_by_relpath 集約後
+    sorted(hits_by_relpath) でソートするため pool 返却順は最終 TSV に影響しない）。
+
+    progress（Progress | None）と hop_no を受け取り、ファイル完了ごとに tick を呼ぶ。
+    progress が None の場合（デフォルト）は従来どおり無音。
 
     戻り値: (pass_results, n_actual_chunks)
       - pass_results: [(relpath, enc, replaced, language, dialect, found)] の list
@@ -263,6 +268,7 @@ def scan_hop(scan_symbols, scan_files, opts, nchunks, file_cache=None, pool=None
     hits_by_relpath: dict[str, list] = {}
     file_meta_by_relpath: dict[str, tuple] = {}
     fallback = list(opts.encoding_fallback)
+    scanned_count = 0
     for chunk in chunks:
         # automaton はチャンク単位で 1 度だけ構築する。
         # Pool は run 単位で 1 度だけ生成され（make_pool）、automaton は worker 側で
@@ -277,18 +283,26 @@ def scan_hop(scan_symbols, scan_files, opts, nchunks, file_cache=None, pool=None
             try:
                 with sf:
                     json.dump(chunk, sf)
-                res = pool.map(
-                    _scan_file_worker,
-                    [(relpath, str(abspath), sig, sym_path)
-                     for relpath, abspath in scan_files])
+                args = [(relpath, str(abspath), sig, sym_path)
+                        for relpath, abspath in scan_files]
+                res = []
+                for item in pool.imap_unordered(_scan_file_worker, args, chunksize=1):
+                    res.append(item)
+                    scanned_count += 1
+                    if progress is not None:
+                        progress.tick(hop_no, scanned_count)
             finally:
                 Path(sym_path).unlink(missing_ok=True)
         else:
             automaton_obj = automaton.build(chunk)
-            res = [_scan_one(relpath, str(abspath), automaton_obj,
-                             opts.lang_map, fallback,
-                             cache=file_cache, enc_memo=enc_memo)
-                   for relpath, abspath in scan_files]
+            res = []
+            for i, (relpath, abspath) in enumerate(scan_files, start=1):
+                res.append(_scan_one(relpath, str(abspath), automaton_obj,
+                                     opts.lang_map, fallback,
+                                     cache=file_cache, enc_memo=enc_memo))
+                scanned_count += 1
+                if progress is not None:
+                    progress.tick(hop_no, scanned_count)
         for relpath, enc, replaced, language, dialect, found in res:
             file_meta_by_relpath.setdefault(relpath, (enc, replaced, language, dialect))
             hits_by_relpath.setdefault(relpath, []).extend(found)
