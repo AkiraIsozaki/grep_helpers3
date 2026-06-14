@@ -29,6 +29,7 @@ class EngineOptions:
     max_passes: int = 8
     progress: str = "off"
     spill_dir: Path | None = None
+    decode_cache_dir: Path | None = None
     force_chunks: int = field(default=0, metadata={"test_only": True})
     force_spill: int = field(default=0, metadata={"test_only": True})  # >0 でエッジ N 件目から強制 spill（テスト専用・本番 0）
     resume: bool = False

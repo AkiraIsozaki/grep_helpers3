@@ -24,7 +24,7 @@ from grep_analyzer.fixedpoint._budget_control import (
 )
 from grep_analyzer.fixedpoint._finalize import build_indirect_hits
 from grep_analyzer.fixedpoint._ingest import absorb_results
-from grep_analyzer.fixedpoint._scan import make_file_cache, make_pool, scan_hop
+from grep_analyzer.fixedpoint._scan import make_decode_cache, make_file_cache, make_pool, scan_hop
 from grep_analyzer.progress import Progress
 
 
@@ -42,6 +42,7 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
     from grep_analyzer.spill import cleanup_stale_edge_files
     cleanup_stale_edge_files(opts.spill_dir)
     file_cache = make_file_cache()
+    decode_cache = make_decode_cache(opts)
     pool = make_pool(opts)
     interrupted = True
     try:
@@ -77,7 +78,7 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
             pass_results, n_actual_chunks = scan_hop(
                 scan_symbols, scan_files, opts, nchunks,
                 file_cache=file_cache, pool=pool, enc_memo=enc_memo,
-                progress=progress, hop_no=ghop)
+                progress=progress, hop_no=ghop, decode_cache=decode_cache)
             # automaton_split は共有走査ゆえ global hop ごとに1回（出力中立）。
             # その hop に live 記号（sc|stm）を持つ keyword のみに付与する
             # （逐次版で走査しない kw は automaton_split を記録しないため）。

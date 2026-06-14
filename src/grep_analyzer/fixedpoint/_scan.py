@@ -23,6 +23,7 @@ from grep_analyzer.classifiers.ts_classifier import parse_tree
 from grep_analyzer.dispatch import LANG_SAMPLE_BYTES, detect_language, detect_shell_dialect
 from grep_analyzer.embed_preprocess import inline_template_spans
 from grep_analyzer.encoding import DEFAULT_FALLBACK, decode_bytes, decode_with_memo
+from grep_analyzer.decode_cache import DecodeCache
 from grep_analyzer.fixedpoint._encmemo import EncMemo
 from grep_analyzer.fixedpoint._encmemo import _DEFAULT_MAX as _ENC_MEMO_MAX
 from grep_analyzer.model import ChaseSymbols
@@ -204,12 +205,18 @@ _WORKER_LANG_MAP: dict[str, str] | None = None
 _WORKER_FALLBACK: list[str] | None = None
 _WORKER_CACHE: "_FileCache | None" = None
 _WORKER_ENC: "EncMemo | None" = None
+_WORKER_DECODE_CACHE: "DecodeCache | None" = None
 
 
-def _worker_init(lang_map, fallback, jobs) -> None:
+def make_decode_cache(opts, namespace: str = ""):
+    """run 単位の永続デコードキャッシュ。decode_cache_dir 無指定なら run 専用 temp。"""
+    return DecodeCache(opts.decode_cache_dir, namespace=namespace)
+
+
+def _worker_init(lang_map, fallback, jobs, decode_cache_dir, namespace) -> None:
     """Pool worker 初期化（run 単位 1 回）。automaton は chunk 到来時に遅延構築。"""
     global _WORKER_LANG_MAP, _WORKER_FALLBACK, _WORKER_CACHE, _WORKER_SIG, _WORKER_AUTOMATON
-    global _WORKER_ENC
+    global _WORKER_ENC, _WORKER_DECODE_CACHE
     _WORKER_LANG_MAP = lang_map
     _WORKER_FALLBACK = fallback
     # worker ごとに独立 LRU を持つため予算を jobs 分割（合計常駐 ≤ 単一 run 上限）。
@@ -218,6 +225,7 @@ def _worker_init(lang_map, fallback, jobs) -> None:
     _WORKER_ENC = EncMemo(max_entries=max(1, _ENC_MEMO_MAX // max(1, jobs)))
     _WORKER_SIG = None
     _WORKER_AUTOMATON = None
+    _WORKER_DECODE_CACHE = DecodeCache(decode_cache_dir, namespace=namespace)
 
 
 def _scan_file_worker(args):
@@ -230,16 +238,18 @@ def _scan_file_worker(args):
         _WORKER_SIG = sig
     return _scan_one(relpath, abspath, _WORKER_AUTOMATON,
                      _WORKER_LANG_MAP, _WORKER_FALLBACK,
-                     cache=_WORKER_CACHE, enc_memo=_WORKER_ENC)
+                     cache=_WORKER_CACHE, enc_memo=_WORKER_ENC,
+                     decode_cache=_WORKER_DECODE_CACHE)
 
 
-def make_pool(opts):
+def make_pool(opts, namespace: str = ""):
     """jobs>1 のとき run 単位の Pool を 1 度だけ生成する（jobs<=1 は None）。"""
     if opts.jobs <= 1:
         return None
     return multiprocessing.Pool(
         opts.jobs, initializer=_worker_init,
-        initargs=(opts.lang_map, list(opts.encoding_fallback), opts.jobs))
+        initargs=(opts.lang_map, list(opts.encoding_fallback), opts.jobs,
+                  opts.decode_cache_dir, namespace))
 
 
 def kinds_of(chase_symbols: ChaseSymbols) -> dict[str, str]:
