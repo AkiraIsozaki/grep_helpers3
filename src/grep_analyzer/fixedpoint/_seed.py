@@ -64,7 +64,8 @@ def initialize_state(seed_hits: list[Hit], source_root: Path,
             if s.file != cur_relpath:
                 cur_text, _, _, cur_lang, cur_dialect = meta_cached(
                     enc_memo, decode_cache, str(sp), s.file, sp.read_bytes(),
-                    opts.lang_map, list(opts.encoding_fallback))
+                    opts.lang_map, list(opts.encoding_fallback),
+                    fast=opts.fast_encoding)
                 cur_lines = None          # 非 AST 言語の split は必要になるまで遅延
                 cur_tree_cache = {}
                 cur_relpath = s.file

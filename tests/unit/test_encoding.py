@@ -87,3 +87,14 @@ def test_decode_with_memoはhit時chardetを呼ばない(monkeypatch):
     decode_with_memo(memo, "/p/y", raw, DEFAULT_FALLBACK)
     decode_with_memo(memo, "/p/y", raw, DEFAULT_FALLBACK)
     assert calls["n"] == 1               # 2回目は memo hit で chardet 非実行
+
+
+def test_fastモードはchardet前にfallback鎖でstrict復号する(monkeypatch):
+    import grep_analyzer.encoding as enc
+    called = {"chardet": 0}
+    monkeypatch.setattr(enc.chardet, "detect",
+                        lambda d: called.__setitem__("chardet", called["chardet"] + 1) or {"encoding": "euc-jp"})
+    data = "テスト".encode("cp932")
+    text, used, replaced = enc.decode_bytes(data, ["cp932", "euc-jp", "latin-1"], fast=True)
+    assert used == "cp932"
+    assert called["chardet"] == 0

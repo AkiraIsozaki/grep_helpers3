@@ -83,7 +83,7 @@ def run(
     # キーは str(abspath)（未正規化）だが memo は純粋なのでキー差異は性能劣化に留まり出力不変。
     enc_memo = EncMemo()
     from grep_analyzer.fixedpoint._scan import make_decode_cache
-    decode_cache = make_decode_cache(opts)
+    decode_cache = make_decode_cache(opts, namespace="fast" if opts.fast_encoding else "")
 
     # --- 2. keyword 単位 direct 構築（既存ロジックを verbatim 流用） ---
     direct_hits: dict[str, list[Hit]] = {}
@@ -100,7 +100,7 @@ def run(
         grep_bytes = grep_file.read_bytes()
         # content 復号用にファイル単位で文字コードを 1 回だけ判定（chardet 1回・行間一貫）。
         # パスは生バイトのまま os.fsdecode するため、ここでは encoding のみ使う。
-        _, grep_enc, _ = decode_bytes(grep_bytes, fb)
+        _, grep_enc, _ = decode_bytes(grep_bytes, fb, fast=opts.fast_encoding)
         hits: list[Hit] = []
 
         lines = grep_bytes.split(b"\n")
@@ -131,7 +131,8 @@ def run(
                 target = Path(source_root) / relpath
                 if is_contained_relpath(relpath) and target.is_file() and is_within_root(source_root, target):
                     file_text, enc, replaced = decode_with_memo(
-                        enc_memo, str(target), target.read_bytes(), fb)
+                        enc_memo, str(target), target.read_bytes(), fb,
+                        fast=opts.fast_encoding)
                     # EXEC SQL は長い preamble の後に現れることがあるため広めの窓。
                     # scan/indirect 経路(_scan._meta_from_text)と同一窓で分類するため
                     # dispatch.LANG_SAMPLE_BYTES を共有（窓の食い違いで経路間分類が割れない）。

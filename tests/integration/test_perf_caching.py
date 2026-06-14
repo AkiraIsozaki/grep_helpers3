@@ -268,8 +268,8 @@ def test_pool_はrun単位で1回だけ生成される(tmp_path, monkeypatch):
     n_pools = {"n": 0}
     real = _lockstep.make_pool
 
-    def spy(opts):
-        p = real(opts)
+    def spy(opts, namespace=""):
+        p = real(opts, namespace=namespace)
         if p is not None:
             n_pools["n"] += 1
         return p

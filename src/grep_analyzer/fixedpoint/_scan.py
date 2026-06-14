@@ -43,24 +43,26 @@ def _meta_from_text(relpath, text, enc, replaced, lang_map):
     return text, enc, replaced, language, dialect
 
 
-def file_meta(relpath: str, raw: bytes, lang_map: dict[str, str], fallback_chain=None):
+def file_meta(relpath: str, raw: bytes, lang_map: dict[str, str], fallback_chain=None,
+              fast: bool = False):
     """1 度だけデコードし (text, encoding, replaced, language, dialect) を返す。"""
     chain = list(fallback_chain) if fallback_chain else DEFAULT_FALLBACK
-    text, enc, replaced = decode_bytes(raw, chain)
+    text, enc, replaced = decode_bytes(raw, chain, fast=fast)
     return _meta_from_text(relpath, text, enc, replaced, lang_map)
 
 
-def meta_via_memo(enc_memo, key, relpath, raw, lang_map, fallback):
+def meta_via_memo(enc_memo, key, relpath, raw, lang_map, fallback, fast: bool = False):
     """file_meta と byte 同値だが enc_memo 経由で chardet を抑止する 5-tuple。
 
     key は str(abspath)（未正規化）。key のブレ（例: source_root の非正規化）は
     chardet の重複呼出を招くだけで出力には影響しない。
     """
-    text, enc, replaced = decode_with_memo(enc_memo, key, raw, fallback)
+    text, enc, replaced = decode_with_memo(enc_memo, key, raw, fallback, fast=fast)
     return _meta_from_text(relpath, text, enc, replaced, lang_map)
 
 
-def meta_cached(enc_memo, decode_cache, key, relpath, raw, lang_map, fallback):
+def meta_cached(enc_memo, decode_cache, key, relpath, raw, lang_map, fallback,
+                fast: bool = False):
     """decode_cache hit を優先し、miss は meta_via_memo/file_meta と同一結果を put して返す。
 
     seed/finalize の直呼び decode を hop 走査と同じ永続層に乗せる。出力同値。
@@ -70,9 +72,9 @@ def meta_cached(enc_memo, decode_cache, key, relpath, raw, lang_map, fallback):
         if dhit is not None:
             return dhit
     if enc_memo is not None:
-        meta = meta_via_memo(enc_memo, key, relpath, raw, lang_map, fallback)
+        meta = meta_via_memo(enc_memo, key, relpath, raw, lang_map, fallback, fast=fast)
     else:
-        meta = file_meta(relpath, raw, lang_map, fallback_chain=fallback)
+        meta = file_meta(relpath, raw, lang_map, fallback_chain=fallback, fast=fast)
     if decode_cache is not None:
         decode_cache.put(key, meta)
     return meta
@@ -121,7 +123,7 @@ def make_file_cache() -> _FileCache:
 
 
 def _read_meta(relpath, abspath, lang_map, fallback, cache, enc_memo=None,
-               decode_cache=None):
+               decode_cache=None, fast: bool = False):
     """file_meta 結果を階層キャッシュ経由で取得。
 
     L1=in-memory(cache) → L2=disk(decode_cache) → miss=read+decode+detect。
@@ -139,9 +141,9 @@ def _read_meta(relpath, abspath, lang_map, fallback, cache, enc_memo=None,
             return dhit
     raw = Path(abspath).read_bytes()
     if enc_memo is None:
-        meta = file_meta(relpath, raw, lang_map, fallback_chain=fallback)
+        meta = file_meta(relpath, raw, lang_map, fallback_chain=fallback, fast=fast)
     else:
-        meta = meta_via_memo(enc_memo, abspath, relpath, raw, lang_map, fallback)
+        meta = meta_via_memo(enc_memo, abspath, relpath, raw, lang_map, fallback, fast=fast)
     if decode_cache is not None:
         decode_cache.put(abspath, meta)
     if cache is not None:
@@ -150,7 +152,7 @@ def _read_meta(relpath, abspath, lang_map, fallback, cache, enc_memo=None,
 
 
 def _scan_one(relpath, abspath, automaton_obj, lang_map, fallback, cache=None, enc_memo=None,
-              decode_cache=None):
+              decode_cache=None, fast: bool = False):
     """1 ファイルを **構築済 automaton** で読み走査しヒット素片を返す純関数。
 
     ストリーミング化＝親に bytes 非常駐・abspath から読む。automaton 走査はデコード済
@@ -160,7 +162,7 @@ def _scan_one(relpath, abspath, automaton_obj, lang_map, fallback, cache=None, e
     try:
         text, enc, replaced, language, dialect = _read_meta(
             relpath, abspath, lang_map, fallback, cache, enc_memo,
-            decode_cache=decode_cache)
+            decode_cache=decode_cache, fast=fast)
     except OSError:
         # walk 後の TOCTOU（消失/権限変化）等。run 全体を落とさず空ヒットへ降格。
         return relpath, "utf-8", False, "c", "bourne", []
@@ -224,6 +226,7 @@ _WORKER_FALLBACK: list[str] | None = None
 _WORKER_CACHE: "_FileCache | None" = None
 _WORKER_ENC: "EncMemo | None" = None
 _WORKER_DECODE_CACHE: "DecodeCache | None" = None
+_WORKER_FAST: bool = False
 
 
 def make_decode_cache(opts, namespace: str = ""):
@@ -231,12 +234,13 @@ def make_decode_cache(opts, namespace: str = ""):
     return DecodeCache(opts.decode_cache_dir, namespace=namespace)
 
 
-def _worker_init(lang_map, fallback, jobs, decode_cache_dir, namespace) -> None:
+def _worker_init(lang_map, fallback, jobs, decode_cache_dir, namespace, fast) -> None:
     """Pool worker 初期化（run 単位 1 回）。automaton は chunk 到来時に遅延構築。"""
     global _WORKER_LANG_MAP, _WORKER_FALLBACK, _WORKER_CACHE, _WORKER_SIG, _WORKER_AUTOMATON
-    global _WORKER_ENC, _WORKER_DECODE_CACHE
+    global _WORKER_ENC, _WORKER_DECODE_CACHE, _WORKER_FAST
     _WORKER_LANG_MAP = lang_map
     _WORKER_FALLBACK = fallback
+    _WORKER_FAST = fast
     # worker ごとに独立 LRU を持つため予算を jobs 分割（合計常駐 ≤ 単一 run 上限）。
     _WORKER_CACHE = _FileCache(budget=_FILE_CACHE_BUDGET // max(1, jobs))
     # worker ごとに独立 LRU ＝予算を jobs 分割し合計常駐を有界化（_FileCache と同様）。
@@ -257,7 +261,7 @@ def _scan_file_worker(args):
     return _scan_one(relpath, abspath, _WORKER_AUTOMATON,
                      _WORKER_LANG_MAP, _WORKER_FALLBACK,
                      cache=_WORKER_CACHE, enc_memo=_WORKER_ENC,
-                     decode_cache=_WORKER_DECODE_CACHE)
+                     decode_cache=_WORKER_DECODE_CACHE, fast=_WORKER_FAST)
 
 
 def _map_chunksize(n_files: int, jobs: int) -> int:
@@ -278,7 +282,7 @@ def make_pool(opts, namespace: str = ""):
     return multiprocessing.Pool(
         opts.jobs, initializer=_worker_init,
         initargs=(opts.lang_map, list(opts.encoding_fallback), opts.jobs,
-                  opts.decode_cache_dir, namespace))
+                  opts.decode_cache_dir, namespace, opts.fast_encoding))
 
 
 def kinds_of(chase_symbols: ChaseSymbols) -> dict[str, str]:
@@ -348,7 +352,8 @@ def scan_hop(scan_symbols, scan_files, opts, nchunks, file_cache=None, pool=None
                 res.append(_scan_one(relpath, str(abspath), automaton_obj,
                                      opts.lang_map, fallback,
                                      cache=file_cache, enc_memo=enc_memo,
-                                     decode_cache=decode_cache))
+                                     decode_cache=decode_cache,
+                                     fast=opts.fast_encoding))
                 scanned_count += 1
                 if progress is not None:
                     progress.tick(hop_no, scanned_count)

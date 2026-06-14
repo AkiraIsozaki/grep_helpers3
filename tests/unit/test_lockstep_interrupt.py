@@ -40,7 +40,7 @@ def _minimal_states(tmp_path, opts):
 def test_中断時はterminateが呼ばれる(monkeypatch, tmp_path):
     opts = _opts()                     # A6 は A10 より前なので _opts ヘルパで構築
     spy = _SpyPool()
-    monkeypatch.setattr(_lockstep, "make_pool", lambda o: spy)
+    monkeypatch.setattr(_lockstep, "make_pool", lambda o, namespace="": spy)
 
     def boom(*a, **k):
         raise KeyboardInterrupt()

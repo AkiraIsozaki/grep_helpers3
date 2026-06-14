@@ -39,12 +39,14 @@ def build_indirect_hits(state: ChaseState) -> list[Hit]:
                 raw = abspath.read_bytes()
                 text, enc, replaced, lang, dialect = meta_cached(
                     state.enc_memo, state.decode_cache, str(abspath), c.relpath, raw,
-                    opts.lang_map, list(opts.encoding_fallback))
+                    opts.lang_map, list(opts.encoding_fallback),
+                    fast=opts.fast_encoding)
             else:
                 # relpath 未知＝abspath 無し。空 bytes の meta を直接生成（memo 不要）。
                 text, enc, replaced, lang, dialect = file_meta(
                     c.relpath, b"", opts.lang_map,
-                    fallback_chain=list(opts.encoding_fallback))
+                    fallback_chain=list(opts.encoding_fallback),
+                    fast=opts.fast_encoding)
             line_cache[c.relpath] = text.split("\n")
             file_meta_by_relpath[c.relpath] = (text, lang, dialect)
             state.encoding_of.setdefault(c.relpath, (enc, replaced))

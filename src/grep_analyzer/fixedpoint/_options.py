@@ -37,3 +37,4 @@ class EngineOptions:
     encoding_fallback: tuple[str, ...] = ("cp932", "euc-jp", "latin-1")
     max_rows_per_part: int = 1_048_575
     diagnostics_detail_limit: int = 1000
+    fast_encoding: bool = False

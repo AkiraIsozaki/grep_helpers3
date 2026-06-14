@@ -34,8 +34,9 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
     source_root = Path(source_root)
     unsafe_rels = unsafe_rels or set()
     rel_to_abs = {r: a for r, a in files}
+    ns = "fast" if opts.fast_encoding else ""
     if decode_cache is None:
-        decode_cache = make_decode_cache(opts)
+        decode_cache = make_decode_cache(opts, namespace=ns)
     for st in states_by_kw.values():
         st.rel_to_abs = rel_to_abs
         st.enc_memo = enc_memo          # finalize が st.enc_memo を使う
@@ -45,7 +46,7 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
     from grep_analyzer.spill import cleanup_stale_edge_files
     cleanup_stale_edge_files(opts.spill_dir)
     file_cache = make_file_cache()
-    pool = make_pool(opts)
+    pool = make_pool(opts, namespace=ns)
     interrupted = True
     try:
         ghop = 1
