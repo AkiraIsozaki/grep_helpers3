@@ -38,14 +38,17 @@ class DecodeCache:
             return None
         path = self._artifact_path(abspath, sig)
         try:
-            with open(path, encoding="utf-8") as f:
-                header = f.readline()
-                body = f.read()
+            with open(path, "rb") as f:
+                raw = f.read()
         except OSError:
             return None
+        nl = raw.find(b"\n")
+        if nl < 0:
+            return None
         try:
-            meta = json.loads(header)
-        except ValueError:
+            meta = json.loads(raw[:nl].decode("utf-8"))
+            body = raw[nl + 1:].decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
             return None
         if meta.get("mtime_ns") != sig[0] or meta.get("size") != sig[1]:
             return None
@@ -64,9 +67,9 @@ class DecodeCache:
         path = self._artifact_path(abspath, sig)
         fd, tmp = tempfile.mkstemp(dir=str(self._dir), prefix="ga_dca_", suffix=".tmp")
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(header + "\n")
-                f.write(text)
+            with os.fdopen(fd, "wb") as f:
+                f.write(header.encode("utf-8") + b"\n")
+                f.write(text.encode("utf-8"))
             os.replace(tmp, path)
         except OSError:
             try:

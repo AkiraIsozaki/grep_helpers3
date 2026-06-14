@@ -55,3 +55,11 @@ def test_同一内容の多重putは冪等(tmp_path):
     for _ in range(20):
         cache.put(str(src), meta)
     assert cache.get(str(src)) == meta
+
+
+def test_CRLFや単独CRを含む本文もバイト改変なく往復する(tmp_path):
+    cache = DecodeCache(tmp_path / "cache")
+    src = _src(tmp_path, "crlf.c", b"x\r\ny\r\n")
+    meta = ("int a;\r\nint b;\r\n\r行頭CR\rおわり", "cp932", False, "c", "bourne")
+    cache.put(str(src), meta)
+    assert cache.get(str(src)) == meta          # \r\n も 単独\r も保持

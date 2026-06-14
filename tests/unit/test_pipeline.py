@@ -126,6 +126,44 @@ def test_大物ファイル除外時はstderrに警告を出す(tmp_path, capsys
     assert "big.c" in err or "skipped" in err.lower() or "除外" in err
 
 
+def test_明示decode_cache_dirはrun後も削除されない(tmp_path):
+    from grep_analyzer.pipeline import run
+    from grep_analyzer.fixedpoint import EngineOptions
+    from grep_analyzer.walk import DEFAULT_EXCLUDE
+    src = tmp_path / "src"; src.mkdir()
+    (src / "a.c").write_bytes("int foo;\n".encode("cp932"))
+    inp = tmp_path / "in"; inp.mkdir()
+    (inp / "foo.grep").write_bytes(f"{src/'a.c'}:1:int foo;\n".encode())
+    dc = tmp_path / "persist"
+    run(inp, tmp_path / "o", src,
+        EngineOptions(jobs=1, exclude=list(DEFAULT_EXCLUDE), decode_cache_dir=dc))
+    assert dc.exists()     # 永続キャッシュは削除されない
+
+
+def test_自動decode_cacheはrun後にtempを残さない(tmp_path, monkeypatch):
+    import tempfile as _t
+    from pathlib import Path as _P
+    from grep_analyzer.pipeline import run
+    from grep_analyzer.fixedpoint import EngineOptions
+    from grep_analyzer.walk import DEFAULT_EXCLUDE
+    created = []
+    real_mkdtemp = _t.mkdtemp
+    def spy(*a, **k):
+        d = real_mkdtemp(*a, **k)
+        if k.get("prefix") == "ga_decode_" or (a and a[0] == "ga_decode_"):
+            created.append(_P(d))
+        return d
+    monkeypatch.setattr("grep_analyzer.pipeline.tempfile.mkdtemp", spy)
+    src = tmp_path / "src"; src.mkdir()
+    (src / "a.c").write_bytes("int foo;\n".encode("cp932"))
+    inp = tmp_path / "in"; inp.mkdir()
+    (inp / "foo.grep").write_bytes(f"{src/'a.c'}:1:int foo;\n".encode())
+    run(inp, tmp_path / "o", src,
+        EngineOptions(jobs=1, exclude=list(DEFAULT_EXCLUDE)))   # decode_cache_dir 未指定
+    assert created                                  # 自動 temp は作られ
+    assert all(not d.exists() for d in created)     # run 後に掃除されている
+
+
 def test_同一decode_cache_dirなら2回目のrunは元ソースを再decodeしない(tmp_path, monkeypatch):
     from grep_analyzer.pipeline import run
     from grep_analyzer.fixedpoint import EngineOptions
