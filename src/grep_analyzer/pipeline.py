@@ -1,6 +1,7 @@
 """direct＋不動点 indirect 併合パイプライン。"""
 
 import os
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -61,7 +62,6 @@ def run(
     # --- 1. walk + 実効 use_ripgrep 解決（walk 由来診断は walk_diag に集約） ---
     walk_diag = Diagnostics()
     # collect_files_ex: 64KiB NUL prefix（collect_files の 8KiB より厳格）＋ total_bytes/unsafe_rels を prefilter 判定に利用
-    import sys
     def _walk_cb(n):
         print(f"[grep_analyzer] walking {n} files...", file=sys.stderr, flush=True)
     files, total_bytes, unsafe_rels = collect_files_ex(
@@ -215,7 +215,6 @@ def run(
         diag.render(detail_limit=opts.diagnostics_detail_limit,
                     exempt=SECTION_8_4_CATEGORIES),
         encoding="utf-8", errors="backslashreplace")
-    import sys
     n_large = walk_diag.counts().get("walk_skipped_large", 0)
     if n_large:
         print(f"[grep_analyzer] 警告: {n_large} 件のファイルが "
