@@ -110,7 +110,7 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
             for kw, st in states_by_kw.items():
                 sc, stm = per_kw[kw]
                 kw_results = pass_results
-                if opts.use_ripgrep and union_keep is not None:
+                if opts.perkw_diag and opts.use_ripgrep and union_keep is not None:
                     # 探索対象を全コーパス `.` ではなく union_keep に限定する
                     # （keep_k ⊆ union_keep なので結果は同集合・探索空間のみ縮小）。
                     keep_k = _rg.prefilter(source_root, rel_to_abs, sorted(sc | stm),

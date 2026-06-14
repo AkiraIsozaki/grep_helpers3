@@ -82,6 +82,9 @@ def _make_parser() -> argparse.ArgumentParser:
                         help="復号/言語判定の永続キャッシュ置き場（run跨ぎ再利用可。無指定はrun専用temp）")
     parser.add_argument("--fast-encoding", action="store_true", dest="fast_encoding",
                         help="chardet 前に fallback 鎖で strict 復号を試みる高速路（opt-in・SJIS 多数環境向け）")
+    parser.add_argument("--no-perkw-diag", dest="perkw_diag", action="store_false",
+                        default=True,
+                        help="per-keyword の rg 再走査を省く（高速化。diagnostics の decode_replaced 帰属のみ変化・TSV不変）")
     return parser
 
 
@@ -106,6 +109,7 @@ def _opts_from(args: argparse.Namespace) -> EngineOptions:
         diagnostics_detail_limit=args.diagnostics_detail_limit,
         decode_cache_dir=Path(args.decode_cache_dir) if args.decode_cache_dir else None,
         fast_encoding=args.fast_encoding,
+        perkw_diag=args.perkw_diag,
     )
 
 

@@ -38,3 +38,4 @@ class EngineOptions:
     max_rows_per_part: int = 1_048_575
     diagnostics_detail_limit: int = 1000
     fast_encoding: bool = False
+    perkw_diag: bool = True
