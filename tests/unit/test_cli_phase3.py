@@ -39,3 +39,11 @@ def test_閾値既定は1GiB_可変():
     base = ["--input", "i", "--output", "o", "--source-root", "s"]
     assert _build_opts(base).ripgrep_threshold_bytes == 1 << 30
     assert _build_opts(base + ["--ripgrep-threshold-bytes", "100"]).ripgrep_threshold_bytes == 100
+
+
+def test_decode_cache_dirオプションがoptsに反映される(tmp_path):
+    from grep_analyzer.cli import _build_opts
+    opts = _build_opts(["--input", str(tmp_path), "--output", str(tmp_path),
+                        "--source-root", str(tmp_path),
+                        "--decode-cache-dir", str(tmp_path / "dc")])
+    assert str(opts.decode_cache_dir).endswith("dc")

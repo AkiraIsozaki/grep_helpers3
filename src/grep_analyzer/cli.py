@@ -78,6 +78,8 @@ def _make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--diagnostics-detail-limit", type=int, default=1000,
                         dest="diagnostics_detail_limit",
                         help="diagnostics 詳細の縮約上限（0 で無制限＝従来同値）")
+    parser.add_argument("--decode-cache-dir", default=None, dest="decode_cache_dir",
+                        help="復号/言語判定の永続キャッシュ置き場（run跨ぎ再利用可。無指定はrun専用temp）")
     return parser
 
 
@@ -100,6 +102,7 @@ def _opts_from(args: argparse.Namespace) -> EngineOptions:
             s for s in args.encoding_fallback.split(",") if s),
         max_rows_per_part=args.max_rows_per_part,
         diagnostics_detail_limit=args.diagnostics_detail_limit,
+        decode_cache_dir=Path(args.decode_cache_dir) if args.decode_cache_dir else None,
     )
 
 
