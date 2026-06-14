@@ -1,0 +1,167 @@
+"""任意 ripgrep 一次フィルタの仕様（spec §8.2・walk 上位集合・出力保存）。"""
+
+from pathlib import Path
+
+import pytest
+
+from grep_analyzer.ripgrep import available, prefilter
+
+
+def test_利用不可時はNoneでフィルタ無効(monkeypatch):
+    from grep_analyzer import ripgrep
+    monkeypatch.setattr(ripgrep, "_resolve_rg", lambda force=False: None)
+    monkeypatch.setattr(ripgrep, "_vendored_rg_path", lambda: None)
+    monkeypatch.setattr(ripgrep.shutil, "which", lambda _: None)
+    monkeypatch.delenv("GREP_ANALYZER_RG", raising=False)
+    assert ripgrep.available() is False
+    assert ripgrep.prefilter(Path("."), {}, ["CODE"]) is None
+
+
+@pytest.mark.requires_ripgrep
+def test_部分文字列を含むrelの上位集合を返す(tmp_path):
+    (tmp_path / "a.c").write_text("int CODE = 1;\n", "utf-8")
+    (tmp_path / "b.c").write_text("int other = 2;\n", "utf-8")
+    (tmp_path / "c.c").write_text("// DECODE\n", "utf-8")
+    rel_abs = {p.name: p for p in tmp_path.glob("*.c")}
+    got = prefilter(tmp_path, rel_abs, ["CODE"])
+    assert "a.c" in got and "c.c" in got and "b.c" not in got
+
+
+@pytest.mark.requires_ripgrep
+def test_gitignore隠しNUL含みも上位集合に含む(tmp_path):
+    import subprocess
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / ".gitignore").write_text("ignored.c\n", "utf-8")
+    (tmp_path / "ignored.c").write_text("int CODE=1;\n", "utf-8")
+    (tmp_path / ".hidden.c").write_text("int CODE=2;\n", "utf-8")
+    (tmp_path / "nul.c").write_bytes(b"int CODE=3;\n\x00trailer\n")
+    (tmp_path / "visible.c").write_text("int CODE=4;\n", "utf-8")
+    rel_abs = {n: tmp_path / n for n in
+               ("ignored.c", ".hidden.c", "nul.c", "visible.c")}
+    got = prefilter(tmp_path, rel_abs, ["CODE"])
+    assert {"ignored.c", ".hidden.c", "nul.c", "visible.c"} <= got
+
+
+@pytest.mark.requires_ripgrep
+def test_空シンボルは空集合(tmp_path):
+    assert prefilter(tmp_path, {}, []) == set()
+
+
+@pytest.mark.requires_ripgrep
+def test_非ASCII_symbolは無効化される_出力不変保証(tmp_path):
+    """symbol は復号テキスト由来。非 ASCII symbol は非 UTF-8 ファイルでバイト不一致と
+    なり rg が automaton ヒット行を取りこぼす（出力不変違反）。非 ASCII を含む場合は
+    None（＝全件走査）にフォールバックして取りこぼしを防ぐ。"""
+    # latin-1 で 'caféVar=1'（生バイト != UTF-8）。automaton は復号テキストでヒットする。
+    (tmp_path / "a.sh").write_bytes("caféVar=1".encode("latin-1") + b"\n")
+    got = prefilter(tmp_path, {"a.sh": tmp_path / "a.sh"}, ["caféVar"])
+    assert got is None                       # 非 ASCII symbol → prefilter 無効化（全件走査）
+    # ASCII symbol が混在しても、非 ASCII が 1 つでもあれば全体を無効化する。
+    assert prefilter(tmp_path, {"a.sh": tmp_path / "a.sh"}, ["x", "caféVar"]) is None
+
+
+def test_utf16ファイルはbinary除外され_rg_ascii不変を守る(tmp_path):
+    """ASCII identity（ASCII codepoint = 同一 ASCII バイト）の唯一の例外は UTF-16/32。
+    だが chardet が UTF-16 を選ぶには NUL 交互パターンが必要で、そのパターンは
+    walk._is_binary が binary 判定して除外する。ゆえに ASCII symbol guard をすり抜ける
+    UTF-16 ファイルは automaton 走査対象（files）に入らず、rg-ON でも出力不変が保たれる。
+    この cross-module 結合（rg 安全性が _is_binary に依存）を回帰ロックする。"""
+    from grep_analyzer.diagnostics import Diagnostics
+    from grep_analyzer.walk import walk_files
+    f = tmp_path / "u16.sh"
+    f.write_bytes("foo_bar=1\n".encode("utf-16-le"))   # NUL 交互 → chardet=utf-16/_is_binary=True
+    got = list(walk_files(tmp_path, include=[], exclude=[], follow_symlinks=False,
+                          max_file_bytes=5_000_000, diag=Diagnostics()))
+    assert all(rel != "u16.sh" for rel, _ in got)      # binary として除外（走査対象外）
+
+
+@pytest.mark.requires_ripgrep
+def test_restrict_to_候補限定でも全件走査と同一集合(tmp_path):
+    """restrict_to に候補 relpath を渡すと、rg の探索対象をそのファイル集合に
+    限定する。候補が「マッチし得る全ファイル」の上位集合なら結果は `.` 全件走査と
+    同一（lock-step の per-keyword prefilter を全コーパス再走査から union_keep 限定へ
+    縮小する最適化の核：keep_k ⊆ union_keep ゆえ探索空間を union_keep に絞っても同集合）。"""
+    (tmp_path / "a.c").write_text("int CODE = 1;\n", "utf-8")
+    (tmp_path / "b.c").write_text("int other = 2;\n", "utf-8")
+    (tmp_path / "c.c").write_text("// DECODE\n", "utf-8")
+    rel_abs = {p.name: p for p in tmp_path.glob("*.c")}
+    full = prefilter(tmp_path, rel_abs, ["CODE"])
+    # restrict_to が full の上位集合（=全候補）なら結果は全件走査と同一
+    restricted = prefilter(tmp_path, rel_abs, ["CODE"],
+                           restrict_to={"a.c", "b.c", "c.c"})
+    assert restricted == full == {"a.c", "c.c"}
+
+
+@pytest.mark.requires_ripgrep
+def test_restrict_to_候補外のマッチは含めない(tmp_path):
+    """restrict_to に含まれない relpath はマッチしても結果に入らない。"""
+    (tmp_path / "a.c").write_text("int CODE = 1;\n", "utf-8")
+    (tmp_path / "c.c").write_text("// DECODE\n", "utf-8")
+    rel_abs = {p.name: p for p in tmp_path.glob("*.c")}
+    got = prefilter(tmp_path, rel_abs, ["CODE"], restrict_to={"a.c"})
+    assert got == {"a.c"}                      # c.c はマッチするが候補外ゆえ除外
+
+
+@pytest.mark.requires_ripgrep
+def test_restrict_to_空候補はrg起動せず空集合(tmp_path):
+    """候補集合が空なら rg を spawn せず即 set()（keep_k ⊆ union_keep=∅ の縮退）。"""
+    (tmp_path / "a.c").write_text("int CODE = 1;\n", "utf-8")
+    rel_abs = {"a.c": tmp_path / "a.c"}
+    got = prefilter(tmp_path, rel_abs, ["CODE"], restrict_to=set())
+    assert got == set()
+
+
+@pytest.mark.requires_ripgrep
+def test_restrict_to_ダッシュ始まりのファイル名でもオプション誤認しない(tmp_path):
+    """`-` 始まりの relpath を位置引数で渡しても rg のオプションと誤認させない
+    （`--` 区切り）。誤認すると rg が rc=2 で落ち prefilter が None→全件走査へ
+    フォールバックし、per-keyword で encoding_of/decode_replaced が他 keyword へ
+    流入して決定性（バイト同一）が壊れる。"""
+    (tmp_path / "-dash.c").write_text("int CODE=1;\n", "utf-8")
+    (tmp_path / "normal.c").write_text("int CODE=2;\n", "utf-8")
+    rel_abs = {"-dash.c": tmp_path / "-dash.c", "normal.c": tmp_path / "normal.c"}
+    got = prefilter(tmp_path, rel_abs, ["CODE"],
+                    restrict_to={"-dash.c", "normal.c"})
+    assert got == {"-dash.c", "normal.c"}      # None でも欠落でもなく両方一致
+
+
+@pytest.mark.requires_ripgrep
+def test_restrict_to_でも非ASCIIと空シンボルの縮退は不変(tmp_path):
+    (tmp_path / "a.sh").write_bytes("caféVar=1".encode("latin-1") + b"\n")
+    rel_abs = {"a.sh": tmp_path / "a.sh"}
+    assert prefilter(tmp_path, rel_abs, ["caféVar"], restrict_to={"a.sh"}) is None
+    assert prefilter(tmp_path, rel_abs, [], restrict_to={"a.sh"}) == set()
+
+
+@pytest.mark.requires_ripgrep
+def test_restrict_to_大量候補のチャンク分割でも同一集合(tmp_path):
+    """候補数が ARG_MAX を跨ぐ規模でも、チャンク分割して union した結果は
+    単一走査と同一（チャンク境界は集合に影響しない）。小さな MAX を注入して検証。"""
+    from grep_analyzer import ripgrep
+    names = [f"f{i:04d}.c" for i in range(200)]
+    for i, n in enumerate(names):
+        (tmp_path / n).write_text(
+            "int CODE=1;\n" if i % 3 == 0 else "int x=2;\n", "utf-8")
+    rel_abs = {n: tmp_path / n for n in names}
+    expect = {n for i, n in enumerate(names) if i % 3 == 0}
+    full = prefilter(tmp_path, rel_abs, ["CODE"])
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(ripgrep, "_ARG_BYTES_BUDGET", 256)   # 強制的に多数チャンクへ
+    try:
+        chunked = prefilter(tmp_path, rel_abs, ["CODE"], restrict_to=set(names))
+    finally:
+        monkey.undo()
+    assert chunked == full == expect
+
+
+@pytest.mark.requires_ripgrep
+def test_非UTF8ファイル名で落ちず正しく一致する(tmp_path):
+    """SJIS 等の非 UTF-8 ファイル名を rg が生バイトで出力しても、bytes 受け＋
+    os.fsdecode で walk の relpath 表現と一致させ、UnicodeDecodeError で落とさない。"""
+    import os
+    name = os.fsdecode("コード.sh".encode("cp932"))   # 非 UTF-8 ファイル名（FS 表現）
+    (tmp_path / name).write_text("getName=1\n", "utf-8")
+    (tmp_path / "other.sh").write_text("nope=1\n", "utf-8")
+    rel_abs = {name: tmp_path / name, "other.sh": tmp_path / "other.sh"}
+    got = prefilter(tmp_path, rel_abs, ["getName"])   # 例外を出さない
+    assert got is not None and name in got and "other.sh" not in got

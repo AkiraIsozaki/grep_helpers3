@@ -1,0 +1,5 @@
+﻿keyword	language	file	lineno	ref_kind	category	category_sub	usage_summary	via_symbol	chain	snippet	encoding	confidence
+MAX_TIMEOUT	java	{SOURCE_ROOT}/Config.java	3	direct	宣言		宣言 (java)		MAX_TIMEOUT@Config.java:3	    public static final int MAX_TIMEOUT = 30;	utf-8	high
+MAX_TIMEOUT	java	{SOURCE_ROOT}/Service.java	3	indirect:constant	宣言		宣言 (java)	MAX_TIMEOUT	MAX_TIMEOUT@Config.java:3 -> MAX_TIMEOUT@Service.java:3	    static final int TIMEOUT = Config.MAX_TIMEOUT;	utf-8	high
+MAX_TIMEOUT	java	{SOURCE_ROOT}/Client.java	4	indirect:constant	宣言		宣言 (java)	TIMEOUT	MAX_TIMEOUT@Config.java:3 -> MAX_TIMEOUT@Service.java:3 -> TIMEOUT@Client.java:4	        int t = Service.TIMEOUT;	utf-8	high
+MAX_TIMEOUT	java	{SOURCE_ROOT}/Service.java	3	indirect:constant	宣言		宣言 (java)	TIMEOUT	MAX_TIMEOUT@Config.java:3 -> MAX_TIMEOUT@Service.java:3 -> TIMEOUT@Service.java:3	    static final int TIMEOUT = Config.MAX_TIMEOUT;	utf-8	high

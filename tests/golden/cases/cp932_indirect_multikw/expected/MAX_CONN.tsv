@@ -1,0 +1,5 @@
+﻿keyword	language	file	lineno	ref_kind	category	category_sub	usage_summary	via_symbol	chain	snippet	encoding	confidence
+MAX_CONN	java	{SOURCE_ROOT}/Config.java	3	direct	宣言		宣言 (java)		MAX_CONN@Config.java:3	    public static final int MAX_CONN = 10;	cp932	high
+MAX_CONN	java	{SOURCE_ROOT}/Service.java	2	indirect:constant	宣言		宣言 (java)	MAX_CONN	MAX_CONN@Config.java:3 -> MAX_CONN@Service.java:2	    static final int CONN_LIMIT = Config.MAX_CONN;	utf-8	high
+MAX_CONN	java	{SOURCE_ROOT}/Client.java	3	indirect:constant	宣言		宣言 (java)	CONN_LIMIT	MAX_CONN@Config.java:3 -> MAX_CONN@Service.java:2 -> CONN_LIMIT@Client.java:3	        int c = Service.CONN_LIMIT;	utf-8	high
+MAX_CONN	java	{SOURCE_ROOT}/Service.java	2	indirect:constant	宣言		宣言 (java)	CONN_LIMIT	MAX_CONN@Config.java:3 -> MAX_CONN@Service.java:2 -> CONN_LIMIT@Service.java:2	    static final int CONN_LIMIT = Config.MAX_CONN;	utf-8	high

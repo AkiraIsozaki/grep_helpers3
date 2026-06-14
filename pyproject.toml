@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grep_analyzer"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "tree-sitter==0.23.2",
+    "tree-sitter-java==0.23.5",
+    "tree-sitter-c==0.23.4",
+    "tree-sitter-python==0.23.6",
+    "tree-sitter-javascript==0.23.1",
+    "tree-sitter-typescript==0.23.2",
+    "chardet==5.2.0",
+    "pyahocorasick==2.3.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# ripgrep バイナリは vendor/ripgrep/{aarch64,x86_64}/ に同梱（オフライン pull 用にコミット済み）。
+# scripts/fetch_ripgrep.py が版・URL・sha256 ピンで再取得する。同梱物をパッケージング対象として宣言。
+grep_analyzer = ["vendor/ripgrep/*/rg", "vendor/ripgrep/*/rg.sha256", "vendor/ripgrep/*/LICENSE-MIT", "vendor/ripgrep/*/UNLICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "perf: 性能ダッシュボード（非ゲート・CI停止しない。spec §11）",
+    "requires_ripgrep: 実ripgrepバイナリを要する隔離テスト（spec §11）",
+]

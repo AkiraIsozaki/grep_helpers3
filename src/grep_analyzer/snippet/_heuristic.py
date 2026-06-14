@@ -1,0 +1,65 @@
+"""sql/shell/perl/groovy ヒューリスティック span。
+
+mask_literals を行ごとに適用し、句境界・文末・shell 終端で停止する。
+heredoc は mask 非対応（既知境界）。LINE_MAX で必ず有限停止。
+"""
+
+from grep_analyzer.chase import mask_literals
+from grep_analyzer.patterns.snippet_boundaries import (
+    GROOVY_TERMINATOR_RE,
+    PERL_TERMINATOR_RE,
+    SH_TERMINATOR_RE,
+    SQL_CLAUSE_RE,
+)
+from grep_analyzer.snippet._clamp import LINE_MAX
+
+
+def _balanced(text: str) -> bool:
+    paren_depth = 0
+    for c in text:
+        if c in "([{":
+            paren_depth += 1
+        elif c in ")]}":
+            paren_depth -= 1
+    return paren_depth == 0 and text.count("'") % 2 == 0 and text.count('"') % 2 == 0
+
+
+def heuristic_span(lines: list[str], hit: int, language: str) -> tuple[int, int]:
+    """sql/shell/perl/groovy の決定的境界。mask_literals で誤爆防止。
+
+    ヒット行自身は停止判定しない。各方向1行ずつ移動し、停止条件を満たした行で停止する。
+    停止条件: 行末 \\ 無・括弧/クォートバランス・SQL は ; か句境界・shell は fi/done/esac 等。
+    """
+    masked_lines = [mask_literals(language, ln) for ln in lines]
+
+    def stop(i: int) -> bool:
+        x = masked_lines[i]
+        if x.rstrip().endswith("\\"):
+            return False
+        if not _balanced(x):
+            return False
+        if language == "sql":
+            return x.rstrip().endswith(";") or bool(SQL_CLAUSE_RE.search(x))
+        if language == "perl":
+            return bool(PERL_TERMINATOR_RE.search(x))
+        if language == "groovy":
+            return bool(GROOVY_TERMINATOR_RE.search(x))
+        return bool(SH_TERMINATOR_RE.search(x))   # shell（既定・既存挙動不変）
+
+    span_start = hit
+    for _ in range(LINE_MAX - 1):
+        if span_start == 0:
+            break
+        span_start -= 1
+        if stop(span_start):
+            break
+    span_end = hit
+    for _ in range(LINE_MAX - 1):
+        if span_end == len(lines) - 1:
+            break
+        span_end += 1
+        if stop(span_end):
+            break
+        if (span_end - span_start + 1) >= LINE_MAX:
+            break
+    return span_start, span_end

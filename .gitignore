@@ -1,0 +1,15 @@
+# wheelhouse/ はクローン即オフライン再現のため Git にコミットする
+# （方針改訂 2026-05-17。再生成手順は phase0-gate-result.md / README.md）
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+# `python -m build`（vendor packaging テスト等）が生成する成果物。
+# wheelhouse/ はコミット対象だが build/・dist/ は成果物なので無視。
+build/
+dist/
+
+# Claude Code worktrees (harness-managed, never commit)
+.claude/worktrees/

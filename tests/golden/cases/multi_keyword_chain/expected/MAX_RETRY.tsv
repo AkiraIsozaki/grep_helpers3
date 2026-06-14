@@ -1,0 +1,5 @@
+﻿keyword	language	file	lineno	ref_kind	category	category_sub	usage_summary	via_symbol	chain	snippet	encoding	confidence
+MAX_RETRY	java	{SOURCE_ROOT}/Config.java	2	direct	宣言		宣言 (java)		MAX_RETRY@Config.java:2	    public static final int MAX_RETRY = 3;	utf-8	high
+MAX_RETRY	java	{SOURCE_ROOT}/Service.java	2	indirect:constant	宣言		宣言 (java)	MAX_RETRY	MAX_RETRY@Config.java:2 -> MAX_RETRY@Service.java:2	    static final int RETRY_LIMIT = Config.MAX_RETRY;	utf-8	high
+MAX_RETRY	java	{SOURCE_ROOT}/Client.java	3	indirect:constant	宣言		宣言 (java)	RETRY_LIMIT	MAX_RETRY@Config.java:2 -> MAX_RETRY@Service.java:2 -> RETRY_LIMIT@Client.java:3	        int r = Service.RETRY_LIMIT;	utf-8	high
+MAX_RETRY	java	{SOURCE_ROOT}/Service.java	2	indirect:constant	宣言		宣言 (java)	RETRY_LIMIT	MAX_RETRY@Config.java:2 -> MAX_RETRY@Service.java:2 -> RETRY_LIMIT@Service.java:2	    static final int RETRY_LIMIT = Config.MAX_RETRY;	utf-8	high
