@@ -12,6 +12,224 @@
 
 **全体の不変条件（各タスクの受け入れ条件）:** 既定（フラグOFF）で既存テストが無改変で通る。実行: `pytest -q`。
 
+**実行順の注意:** Task S1/S2（ステータス可視化）を**最初に**実装する。長時間 run の「進行中か停止中か」をすぐ見えるようにするため、他の性能タスクより前に入れる。S1/S2 は decode キャッシュ等と独立。
+
+---
+
+## Task S1: hop 内ハートビート（走査中の途中経過を stderr へ）
+
+**Files:**
+- Modify: `src/grep_analyzer/progress.py`（`tick` 追加、elapsed 表示、`every` 閾値）
+- Modify: `src/grep_analyzer/fixedpoint/_scan.py`（`scan_hop` に `progress`/`hop_no` を渡し、ファイル完了ごとに tick。jobs>1 は `pool.imap_unordered` で完了数を逐次カウント）
+- Modify: `src/grep_analyzer/fixedpoint/_lockstep.py`（`scan_hop(...)` 呼出に `progress=progress, hop_no=ghop`）
+- Test: `tests/unit/test_progress.py`（既存に追加）
+
+現状 `Progress.hop` は hop 完了後にしか出ない。`tick` を足し、hop の途中で `every` 件ごとに
+`scanning {scanned}/{total}` を出す。`imap_unordered` は scan_hop が relpath 単位で sorted 集約する
+ため**出力不変**（pool の返却順は最終 TSV に無影響）。stderr 専用で TSV/diagnostics/exit 無影響。
+
+- [ ] **Step 1: 失敗するテスト（tick が閾値ごとに出力）**
+
+```python
+# tests/unit/test_progress.py に追加
+import io
+from grep_analyzer.progress import Progress
+
+
+def test_tick_emits_every_threshold():
+    buf = io.StringIO()
+    p = Progress("on", stream=buf, every=3)
+    p.start(10)
+    for i in range(1, 8):
+        p.tick(hop=1, scanned=i)
+    out = buf.getvalue()
+    # 3,6 件目で途中経過が出る（少なくとも 2 本）
+    assert out.count("scanning") >= 2
+    assert "1/10" not in out                   # 閾値未満では出さない
+
+
+def test_tick_silent_when_off():
+    buf = io.StringIO()
+    p = Progress("off", stream=buf, every=1)
+    p.start(10)
+    p.tick(hop=1, scanned=5)
+    assert buf.getvalue() == ""
+```
+
+- [ ] **Step 2: 失敗を確認**
+
+Run: `pytest tests/unit/test_progress.py -q`
+Expected: FAIL（`Progress.__init__() got an unexpected keyword argument 'every'` / `tick` 無し）
+
+- [ ] **Step 3: `progress.py` を実装**
+
+```python
+"""標準エラー進捗。level=="on" 以外は完全無音。stream（既定 sys.stderr）専用で
+TSV/diagnostics/終了コードに無影響。tick は hop 内の途中経過（liveness 用）。"""
+
+import sys
+import time
+
+
+class Progress:
+    def __init__(self, level: str, stream=None, every: int = 2000) -> None:
+        self._on = level == "on"
+        self._stream = stream if stream is not None else sys.stderr
+        self._total = 0
+        self._every = max(1, every)
+        self._t0 = None
+        self._last = 0
+
+    def _elapsed(self) -> float:
+        return time.monotonic() - self._t0 if self._t0 is not None else 0.0
+
+    def start(self, total_files: int) -> None:
+        self._total = total_files
+        self._t0 = time.monotonic()
+        self._last = 0
+        if self._on:
+            print(f"[grep_analyzer] start files={total_files}",
+                  file=self._stream, flush=True)
+
+    def tick(self, hop: int, scanned: int) -> None:
+        """hop 内途中経過。every 件ごと（と最終件）に出す。stderr 専用・出力不変。"""
+        if not self._on:
+            return
+        if scanned - self._last >= self._every or scanned >= self._total:
+            self._last = scanned
+            print(f"[grep_analyzer] hop={hop} scanning {scanned}/{self._total} "
+                  f"elapsed={self._elapsed():.0f}s", file=self._stream, flush=True)
+
+    def hop(self, hop: int, n_symbols: int, scanned: int) -> None:
+        self._last = 0
+        if self._on:
+            print(f"[grep_analyzer] hop={hop} done symbols={n_symbols} "
+                  f"scanned={scanned}/{self._total} elapsed={self._elapsed():.0f}s",
+                  file=self._stream, flush=True)
+
+    def done(self) -> None:
+        if self._on:
+            print(f"[grep_analyzer] done elapsed={self._elapsed():.0f}s",
+                  file=self._stream, flush=True)
+```
+
+- [ ] **Step 4: テスト成功を確認**
+
+Run: `pytest tests/unit/test_progress.py -q`
+Expected: PASS
+
+- [ ] **Step 5: scan_hop に tick を配線（jobs=1 と jobs>1）**
+
+`_scan.py` の `scan_hop(..., decode_cache=None)` 署名に `progress=None, hop_no=0` を追加。
+jobs>1 分岐の `pool.map(...)` を imap_unordered＋カウントに置換:
+
+```python
+                args = [(relpath, str(abspath), sig, sym_path)
+                        for relpath, abspath in scan_files]
+                res = []
+                it = pool.imap_unordered(
+                    _scan_file_worker, args,
+                    chunksize=_map_chunksize(len(args), opts.jobs))
+                for r in it:
+                    res.append(r)
+                    if progress is not None:
+                        progress.tick(hop_no, len(res))
+```
+jobs=1 分岐:
+
+```python
+            automaton_obj = automaton.build(chunk)
+            res = []
+            for i, (relpath, abspath) in enumerate(scan_files, 1):
+                res.append(_scan_one(relpath, str(abspath), automaton_obj,
+                                     opts.lang_map, fallback,
+                                     cache=file_cache, enc_memo=enc_memo,
+                                     decode_cache=decode_cache))
+                if progress is not None:
+                    progress.tick(hop_no, i)
+```
+（注: `_map_chunksize` は Task 8 で追加。S1 を先に実装する場合は `_map_chunksize` を本タスクで
+先行追加してよい。なければ暫定 `chunksize=1` で imap_unordered し、Task 8 で chunksize を入れる。）
+
+`_lockstep.py` の `scan_hop(...)` 呼出に `progress=progress, hop_no=ghop` を追加。
+
+- [ ] **Step 6: 出力不変の非回帰（imap_unordered でも TSV 同一）**
+
+Run: `pytest -q`
+Expected: PASS（全件・golden 無改変）
+
+- [ ] **Step 7: コミット**
+
+```bash
+git add src/grep_analyzer/progress.py src/grep_analyzer/fixedpoint/_scan.py src/grep_analyzer/fixedpoint/_lockstep.py tests/unit/test_progress.py
+git commit -m "feat(progress): hop内ハートビート（走査中の途中経過・出力不変）"
+```
+
+---
+
+## Task S2: walk フェーズの進捗（60GB 列挙中の無音を解消）
+
+**Files:**
+- Modify: `src/grep_analyzer/walk.py`（`collect_files_ex` に `on_progress=None` コールバック、N 件ごと呼出）
+- Modify: `src/grep_analyzer/pipeline.py`（progress=="on" 時に walk 件数を stderr へ出すコールバックを渡す）
+- Test: `tests/unit/test_walk.py`（コールバックが呼ばれる）
+
+walk は `Progress.start` より前に走るため、60GB 列挙中は完全無音。`collect_files_ex` に
+`on_progress(count)` を足し、列挙ファイル N 件ごとに呼ぶ。pipeline は progress on のとき
+stderr に `walking ... N files` を出す。出力（TSV/diag）不変・stderr のみ。
+
+- [ ] **Step 1: 失敗するテスト**
+
+```python
+# tests/unit/test_walk.py に追加
+def test_collect_files_ex_calls_on_progress(tmp_path):
+    from grep_analyzer.walk import collect_files_ex, DEFAULT_EXCLUDE
+    for i in range(5):
+        (tmp_path / f"f{i}.c").write_bytes(b"int x;\n")
+    seen = []
+    collect_files_ex(tmp_path, include=[], exclude=list(DEFAULT_EXCLUDE),
+                     follow_symlinks=False, max_file_bytes=1_000_000, diag=None,
+                     on_progress=lambda n: seen.append(n), progress_every=2)
+    assert seen and seen[-1] >= 1               # 少なくとも 1 回は進捗通知
+```
+
+- [ ] **Step 2: 失敗を確認**
+
+Run: `pytest tests/unit/test_walk.py::test_collect_files_ex_calls_on_progress -q`
+Expected: FAIL（`collect_files_ex() got an unexpected keyword argument 'on_progress'`）
+
+- [ ] **Step 3: 実装**
+
+`walk.py` の `collect_files_ex` 署名に `on_progress=None, progress_every=5000` を追加し、
+受理ファイルを 1 件積むたびにカウンタを進め、`progress_every` ごとに `on_progress(count)` を呼ぶ
+（既存の戻り値・除外判定・診断は不変）。`diag` が None 許容になっていない場合は None ガードを足す
+（テストが `diag=None` を渡すため。既存呼出は Diagnostics を渡すので非回帰）。
+
+`pipeline.py` の `collect_files_ex(...)` 呼出に、progress=="on" のとき:
+
+```python
+    import sys
+    def _walk_cb(n):
+        print(f"[grep_analyzer] walking {n} files...", file=sys.stderr, flush=True)
+    files, total_bytes, unsafe_rels = collect_files_ex(
+        Path(source_root), include=opts.include, exclude=opts.exclude,
+        follow_symlinks=opts.follow_symlinks, max_file_bytes=opts.max_file_bytes,
+        diag=walk_diag,
+        on_progress=_walk_cb if opts.progress == "on" else None)
+```
+
+- [ ] **Step 4: テスト成功＋非回帰**
+
+Run: `pytest tests/unit/test_walk.py tests/unit/test_pipeline.py -q`
+Expected: PASS
+
+- [ ] **Step 5: コミット**
+
+```bash
+git add src/grep_analyzer/walk.py src/grep_analyzer/pipeline.py tests/unit/test_walk.py
+git commit -m "feat(progress): walk フェーズの進捗を stderr へ（列挙中の無音を解消）"
+```
+
 ---
 
 ## Task 1: `DecodeCache` モジュール（永続デコードキャッシュ本体）
@@ -1046,6 +1264,8 @@ git commit -m "docs: 60GB 向け推奨実行例とフラグ効果"
 
 - **Spec coverage:** spec §3.1→Task1-7, §3.2→Task8, §3.3→Task9, §3.4(B-1)→Task10,
   §3.5(B-2)→Task11, §3.4運用→Task12。②はドロップ（spec §6）でタスク無し＝整合。
+  ステータス可視化（ユーザ追加要件: run の進行/停止が見える）→Task S1（hop内ハートビート）/
+  S2（walk進捗）。spec 外の運用要件として最優先で実装。
 - **Placeholder scan:** 各コード手順に実コードを記載。Task9 の `counts()` のみ「無ければ足す」
   条件分岐があるが、確認手順とテスト追加を明示済み（実装時に `diagnostics.py` を確認）。
 - **Type consistency:** decode meta は全経路 `(text, enc, replaced, language, dialect)` の 5-tuple で統一。
