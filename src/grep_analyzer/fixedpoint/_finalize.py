@@ -6,7 +6,7 @@ chain_to を列挙して indirect Hit を生成する。seed と同じ (relpath,
 """
 
 from grep_analyzer.classify import classify_hit
-from grep_analyzer.fixedpoint._scan import file_meta, meta_via_memo
+from grep_analyzer.fixedpoint._scan import file_meta, meta_cached
 from grep_analyzer.fixedpoint._state import ChaseState
 from grep_analyzer.model import Hit
 from grep_analyzer.provenance import Occurrence
@@ -37,14 +37,9 @@ def build_indirect_hits(state: ChaseState) -> list[Hit]:
             if c.relpath in state.rel_to_abs:
                 abspath = state.rel_to_abs[c.relpath]
                 raw = abspath.read_bytes()
-                if state.enc_memo is not None:
-                    text, enc, replaced, lang, dialect = meta_via_memo(
-                        state.enc_memo, str(abspath), c.relpath, raw, opts.lang_map,
-                        list(opts.encoding_fallback))
-                else:
-                    text, enc, replaced, lang, dialect = file_meta(
-                        c.relpath, raw, opts.lang_map,
-                        fallback_chain=list(opts.encoding_fallback))
+                text, enc, replaced, lang, dialect = meta_cached(
+                    state.enc_memo, state.decode_cache, str(abspath), c.relpath, raw,
+                    opts.lang_map, list(opts.encoding_fallback))
             else:
                 # relpath 未知＝abspath 無し。空 bytes の meta を直接生成（memo 不要）。
                 text, enc, replaced, lang, dialect = file_meta(

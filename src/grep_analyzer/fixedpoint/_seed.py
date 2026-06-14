@@ -18,7 +18,7 @@ from grep_analyzer.diagnostics import Diagnostics
 from grep_analyzer.embed_preprocess import effective_language
 from grep_analyzer.fixedpoint._ingest import ingest_one
 from grep_analyzer.fixedpoint._options import EngineOptions
-from grep_analyzer.fixedpoint._scan import file_meta, kinds_of, meta_via_memo
+from grep_analyzer.fixedpoint._scan import kinds_of, meta_cached
 from grep_analyzer.fixedpoint._state import ChaseState
 from grep_analyzer.model import ChaseSymbols, Hit
 from grep_analyzer.provenance import Occurrence, ProvenanceGraph
@@ -28,7 +28,7 @@ from grep_analyzer.stoplist import SymbolPolicy, load_stoplist
 
 def initialize_state(seed_hits: list[Hit], source_root: Path,
                      opts: EngineOptions, diag: Diagnostics,
-                     enc_memo=None) -> ChaseState:
+                     enc_memo=None, decode_cache=None) -> ChaseState:
     """seed_hits を ChaseState に取り込み、hop=1 までの初期 ingest を完了させる。"""
     policy = SymbolPolicy(opts.min_specificity, load_stoplist(opts.stoplist_path))
     budget = MemoryBudget(opts.memory_limit_mb)
@@ -62,14 +62,9 @@ def initialize_state(seed_hits: list[Hit], source_root: Path,
         sp = source_root / s.file
         if is_contained_relpath(s.file) and sp.is_file() and is_within_root(source_root, sp):
             if s.file != cur_relpath:
-                if enc_memo is not None:
-                    cur_text, _, _, cur_lang, cur_dialect = meta_via_memo(
-                        enc_memo, str(sp), s.file, sp.read_bytes(),
-                        opts.lang_map, list(opts.encoding_fallback))
-                else:
-                    cur_text, _, _, cur_lang, cur_dialect = file_meta(
-                        s.file, sp.read_bytes(), opts.lang_map,
-                        fallback_chain=list(opts.encoding_fallback))
+                cur_text, _, _, cur_lang, cur_dialect = meta_cached(
+                    enc_memo, decode_cache, str(sp), s.file, sp.read_bytes(),
+                    opts.lang_map, list(opts.encoding_fallback))
                 cur_lines = None          # 非 AST 言語の split は必要になるまで遅延
                 cur_tree_cache = {}
                 cur_relpath = s.file

@@ -82,6 +82,8 @@ def run(
     # （jobs>1 の並列 SCAN は process-local の _WORKER_ENC を使い fork 越しに共有不可）。
     # キーは str(abspath)（未正規化）だが memo は純粋なのでキー差異は性能劣化に留まり出力不変。
     enc_memo = EncMemo()
+    from grep_analyzer.fixedpoint._scan import make_decode_cache
+    decode_cache = make_decode_cache(opts)
 
     # --- 2. keyword 単位 direct 構築（既存ロジックを verbatim 流用） ---
     direct_hits: dict[str, list[Hit]] = {}
@@ -175,12 +177,13 @@ def run(
         indirect_diag[kw] = Diagnostics()
         states_by_kw[kw] = initialize_state(
             direct_hits[kw], Path(source_root), opts, indirect_diag[kw],
-            enc_memo=enc_memo)
+            enc_memo=enc_memo, decode_cache=decode_cache)
 
     # --- 4. 1本の lock-step pass ---
     indirect = run_fixedpoint_multi(
         states_by_kw, Path(source_root), opts,
-        files=files, unsafe_rels=unsafe_rels, enc_memo=enc_memo)
+        files=files, unsafe_rels=unsafe_rels, enc_memo=enc_memo,
+        decode_cache=decode_cache)
 
     # --- 5. finalize（keyword ソート順＝従来 glob 順と同一） ---
     src_abs = str(Path(source_root).resolve())

@@ -60,6 +60,24 @@ def meta_via_memo(enc_memo, key, relpath, raw, lang_map, fallback):
     return _meta_from_text(relpath, text, enc, replaced, lang_map)
 
 
+def meta_cached(enc_memo, decode_cache, key, relpath, raw, lang_map, fallback):
+    """decode_cache hit を優先し、miss は meta_via_memo/file_meta と同一結果を put して返す。
+
+    seed/finalize の直呼び decode を hop 走査と同じ永続層に乗せる。出力同値。
+    """
+    if decode_cache is not None:
+        dhit = decode_cache.get(key)
+        if dhit is not None:
+            return dhit
+    if enc_memo is not None:
+        meta = meta_via_memo(enc_memo, key, relpath, raw, lang_map, fallback)
+    else:
+        meta = file_meta(relpath, raw, lang_map, fallback_chain=fallback)
+    if decode_cache is not None:
+        decode_cache.put(key, meta)
+    return meta
+
+
 _FILE_CACHE_BUDGET = 64 * 1024 * 1024   # 復号テキスト常駐の上限（文字数の概算予算）
 
 

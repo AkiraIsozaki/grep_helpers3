@@ -109,3 +109,31 @@ def test_file列は絶対_chainは相対_snippetは構文単位(tmp_path):
     assert cells[2] == f"{resolved}/A.java"                  # file 絶対
     assert cells[9] == "K@A.java:2"                           # chain 相対維持
     assert cells[10] == '  static final String K = \\n     "K";'  # snippet 多行
+
+
+def test_同一decode_cache_dirなら2回目のrunは元ソースを再decodeしない(tmp_path, monkeypatch):
+    from grep_analyzer.pipeline import run
+    from grep_analyzer.fixedpoint import EngineOptions
+    from grep_analyzer.walk import DEFAULT_EXCLUDE
+    from grep_analyzer.fixedpoint import _scan
+
+    src = tmp_path / "src"; src.mkdir()
+    (src / "a.c").write_bytes("int foo;\n".encode("cp932"))
+    inp = tmp_path / "in"; inp.mkdir()
+    (inp / "foo.grep").write_bytes(f"{src/'a.c'}:1:int foo;\n".encode())
+    dc_dir = tmp_path / "dc"
+
+    def _opts():
+        return EngineOptions(jobs=1, exclude=list(DEFAULT_EXCLUDE), decode_cache_dir=dc_dir)
+
+    run(inp, tmp_path / "o1", src, _opts())          # 1st run fills the cache
+
+    calls = {"n": 0}
+    real_mvm = _scan.meta_via_memo
+    real_fm = _scan.file_meta
+    monkeypatch.setattr(_scan, "meta_via_memo",
+                        lambda *a, **k: (calls.__setitem__("n", calls["n"] + 1), real_mvm(*a, **k))[1])
+    monkeypatch.setattr(_scan, "file_meta",
+                        lambda *a, **k: (calls.__setitem__("n", calls["n"] + 1), real_fm(*a, **k))[1])
+    run(inp, tmp_path / "o2", src, _opts())          # 2nd run: source decode served from cache
+    assert calls["n"] == 0

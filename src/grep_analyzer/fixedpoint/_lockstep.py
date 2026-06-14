@@ -29,20 +29,22 @@ from grep_analyzer.progress import Progress
 
 
 def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
-                         unsafe_rels=None, enc_memo=None):
+                         unsafe_rels=None, enc_memo=None, decode_cache=None):
     """全 keyword を lock-step で前進させ keyword 別 indirect Hit を返す。"""
     source_root = Path(source_root)
     unsafe_rels = unsafe_rels or set()
     rel_to_abs = {r: a for r, a in files}
+    if decode_cache is None:
+        decode_cache = make_decode_cache(opts)
     for st in states_by_kw.values():
         st.rel_to_abs = rel_to_abs
         st.enc_memo = enc_memo          # finalize が st.enc_memo を使う
+        st.decode_cache = decode_cache
     progress = Progress(opts.progress)
     progress.start(len(files))
     from grep_analyzer.spill import cleanup_stale_edge_files
     cleanup_stale_edge_files(opts.spill_dir)
     file_cache = make_file_cache()
-    decode_cache = make_decode_cache(opts)
     pool = make_pool(opts)
     interrupted = True
     try:
