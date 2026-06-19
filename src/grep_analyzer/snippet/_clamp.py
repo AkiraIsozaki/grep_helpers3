@@ -30,6 +30,8 @@ def _truncate_for_render(text: str, char_max: int) -> str:
     （_render 側が後段で 1 回だけ escape する契約は維持）。
     """
     budget = char_max - len(ELL)
+    if budget < 0:                        # ELL すら入らない極小 char_max（本番 800 では未到達）
+        return text[:max(0, char_max)]
     lo, hi = 0, len(text)
     while lo < hi:
         mid = (lo + hi + 1) // 2

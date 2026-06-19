@@ -110,6 +110,11 @@ class DecodeCache:
         except (ValueError, UnicodeDecodeError):
             self._discard(path)
             return None
+        if not isinstance(meta, dict):
+            # valid JSON だが dict でない破損形（null/数値/配列/文字列）は、後段の
+            # meta.get(...) が AttributeError を投げる前に miss 降格する（H5・resume.py:21 と対称）。
+            self._discard(path)
+            return None
         body_bytes = raw[nl + 1:]
         if meta.get("mtime_ns") != sig[0] or meta.get("size") != sig[1]:
             return None                      # sha1 衝突保険（キー以外でも再検証）
