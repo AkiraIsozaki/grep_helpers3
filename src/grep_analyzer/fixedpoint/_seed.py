@@ -13,7 +13,7 @@ from grep_analyzer.chase import (
     extract_chase_symbols_from_root,
 )
 from grep_analyzer.classifiers import _AST_CHASERS
-from grep_analyzer.classifiers.ts_classifier import parse_tree
+from grep_analyzer.classifiers.ts_classifier import _ParseFailed, parse_tree
 from grep_analyzer.diagnostics import Diagnostics
 from grep_analyzer.embed_preprocess import effective_language
 from grep_analyzer.fixedpoint._ingest import ingest_one
@@ -72,8 +72,14 @@ def initialize_state(seed_hits: list[Hit], source_root: Path,
             dialect = cur_dialect
             lang = effective_language(cur_lang, cur_text, s.lineno)
             if lang in _AST_CHASERS:
-                root = parse_tree(lang, cur_text, cache=cur_tree_cache)
-                cs = extract_chase_symbols_from_root(lang, root, s.lineno)
+                # parse 失敗/サイズ上限超（_ParseFailed）は空抽出へ降格する。
+                # direct ヒット先は walk のサイズ除外を経ないため巨大ファイルが seed に
+                # なり得る。chase.extract_chase_symbols_tree と同じ降格契約に揃える。
+                try:
+                    root = parse_tree(lang, cur_text, cache=cur_tree_cache)
+                    cs = extract_chase_symbols_from_root(lang, root, s.lineno)
+                except _ParseFailed:
+                    cs = ChaseSymbols()
             else:
                 if cur_lines is None:
                     cur_lines = cur_text.split("\n")

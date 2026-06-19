@@ -235,7 +235,8 @@ def make_decode_cache(opts, namespace: str = ""):
                        max_bytes=opts.decode_cache_max_bytes)
 
 
-def _worker_init(lang_map, fallback, jobs, decode_cache_dir, namespace, fast) -> None:
+def _worker_init(lang_map, fallback, jobs, decode_cache_dir, namespace, fast,
+                 max_bytes=None) -> None:
     """Pool worker を初期化する（run 単位 1 回）。automaton は chunk 到来時に遅延構築する。"""
     global _WORKER_LANG_MAP, _WORKER_FALLBACK, _WORKER_CACHE, _WORKER_SIG, _WORKER_AUTOMATON
     global _WORKER_ENC, _WORKER_DECODE_CACHE, _WORKER_FAST
@@ -248,7 +249,11 @@ def _worker_init(lang_map, fallback, jobs, decode_cache_dir, namespace, fast) ->
     _WORKER_ENC = EncMemo(max_entries=max(1, _ENC_MEMO_MAX // max(1, jobs)))
     _WORKER_SIG = None
     _WORKER_AUTOMATON = None
-    _WORKER_DECODE_CACHE = DecodeCache(decode_cache_dir, namespace=namespace)
+    # max_bytes を worker にも渡す。jobs>1 では scan の put は worker 側なので、ここで
+    # 上限を効かせないと --decode-cache-max-bytes が並列時に空文になる（F3）。各 worker は
+    # 共有ディレクトリ全体に対して退避するので、どれかが上限を跨いだ時点で全体が縮む。
+    _WORKER_DECODE_CACHE = DecodeCache(decode_cache_dir, namespace=namespace,
+                                       max_bytes=max_bytes)
 
 
 def _scan_file_worker(args):
@@ -283,7 +288,8 @@ def make_pool(opts, namespace: str = ""):
     return multiprocessing.Pool(
         opts.jobs, initializer=_worker_init,
         initargs=(opts.lang_map, list(opts.encoding_fallback), opts.jobs,
-                  opts.decode_cache_dir, namespace, opts.fast_encoding))
+                  opts.decode_cache_dir, namespace, opts.fast_encoding,
+                  opts.decode_cache_max_bytes))
 
 
 def kinds_of(chase_symbols: ChaseSymbols) -> dict[str, str]:

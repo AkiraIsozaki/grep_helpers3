@@ -30,7 +30,22 @@ class DecodeCache:
         self._ns = namespace
         self._max_bytes = max_bytes
         self.put_failures = 0           # put が OSError（disk full 等）で no-op になった回数
+        # 概算常駐バイト。これが上限を超えたときだけ実走査の退避を起こす（put 毎の全走査＝
+        # O(n^2) を回避）。既存ディレクトリ再利用時は初期サイズを実測して種にする。
+        self._approx_bytes = self._scan_total() if max_bytes is not None else 0
         self._sweep_stale_temp()
+
+    def _scan_total(self) -> int:
+        total = 0
+        try:
+            for p in self._dir.glob("*.dca"):
+                try:
+                    total += p.stat().st_size
+                except OSError:
+                    pass
+        except OSError:
+            pass
+        return total
 
     def _sweep_stale_temp(self) -> None:
         """クラッシュ/SIGKILL で残った temp（ga_dca_*.tmp）を起動時に掃除する（R-2）。"""
@@ -134,13 +149,16 @@ class DecodeCache:
             self.put_failures += 1           # disk full 等は静かに caching を諦める（L-1）
             return
         if self._max_bytes is not None:
-            self._enforce_budget()
+            self._approx_bytes += len(body)
+            if self._approx_bytes > self._max_bytes:
+                self._enforce_budget()       # 概算が上限超のときだけ実走査（put 毎の全走査を回避）
 
     def _enforce_budget(self) -> None:
         """max_bytes 超過時に古い（mtime 昇順）アーティファクトから退避する（R-1）。
 
         opt-in（max_bytes 指定時のみ）。退避はキャッシュミス＝再 decode に降格するだけで
-        出力には影響しない。超過時のみディレクトリを舐めるので通常 put は安価。
+        出力には影響しない。概算バイトが上限を跨いだときだけ呼ばれ、ここで実サイズを
+        再走査して退避し、概算を実値へ同期し直す（amortize で put あたりは安価）。
         """
         try:
             arts = []
@@ -152,8 +170,6 @@ class DecodeCache:
                     continue
                 arts.append((stt.st_mtime_ns, stt.st_size, p))
                 total += stt.st_size
-            if total <= self._max_bytes:
-                return
             arts.sort(key=lambda t: t[0])    # 古い mtime 先頭
             for _mt, size, p in arts:
                 if total <= self._max_bytes:
@@ -163,5 +179,6 @@ class DecodeCache:
                     total -= size
                 except OSError:
                     pass
+            self._approx_bytes = total       # 概算を実値（退避後）へ同期
         except OSError:
             pass

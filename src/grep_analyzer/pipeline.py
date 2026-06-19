@@ -56,6 +56,10 @@ def run(
     merge_in_order で再現する。
     """
     output_dir.mkdir(parents=True, exist_ok=True)
+    # root realpath キャッシュは run をまたいで持ち越さない（同一プロセスで source_root が
+    # 別実体へ張り替わったときの stale 判定を防ぐ・F2）。
+    from grep_analyzer.walk import _realpath_root
+    _realpath_root.cache_clear()
     if opts is None:
         opts = _default_opts()
     _auto_cache_dir = None

@@ -39,6 +39,7 @@ def run_fixedpoint(
     if files is None and unsafe_rels:
         raise ValueError(
             "unsafe_rels は files と併用必須（files=None の walk フォールバックは unsafe 保護を適用しない）")
+    walk._realpath_root.cache_clear()         # run 跨ぎの stale root realpath を持ち越さない（F2）
     source_root = Path(source_root)
     if enc_memo is None:
         enc_memo = EncMemo()                  # 後方互換の内部既定とする（run 共有 enc-memo）
