@@ -19,6 +19,14 @@ def test_Shellのtest比較は比較と判定する():
     assert classify_shell('[ "$x" = "X" ]') == ("比較", "medium")
 
 
+def test_Shellの等価比較は代入と誤判定しない():
+    # 行頭 `\w+==` は代入規則 `^\s*\w+=` が == の最初の = を拾って代入に倒れていた。
+    # 抽出側 BOURNE_ASSIGN_RE は =(?!=) で == を除外しており、分類と食い違っていた。
+    assert classify_shell("x==y")[0] != "代入"
+    # 真の代入は従来どおり代入（リグレッションガード）。
+    assert classify_shell("x=y") == ("代入", "medium")
+
+
 def test_該当規則がなければその他と判定する():
     assert classify_sql("SELECT 1 FROM dual") == ("その他", "medium")
 

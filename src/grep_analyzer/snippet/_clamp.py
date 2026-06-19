@@ -21,6 +21,25 @@ def _escape_sep(line: str) -> str:
     return line.replace(SEP, " \\\\n ")
 
 
+def _truncate_for_render(text: str, char_max: int) -> str:
+    """raw text を「_render の escape 後の最終長が char_max を超えない」よう切り ELL を足す。
+
+    SEP(4 文字)は _escape_sep で 5 文字へ膨らむため、raw 長だけで切ると escape 後に
+    char_max を超え得る（M）。escape 後長 ≤ char_max-len(ELL) となる最大 raw prefix を
+    二分探索で求める。_escape_sep は単調増加なので二分が成立する。返り値は raw prefix＋ELL
+    （_render 側が後段で 1 回だけ escape する契約は維持）。
+    """
+    budget = char_max - len(ELL)
+    lo, hi = 0, len(text)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if len(_escape_sep(text[:mid])) <= budget:
+            lo = mid
+        else:
+            hi = mid - 1
+    return text[:lo] + ELL
+
+
 def _render(rows: list[str], top_k: int, bot_k: int) -> str:
     body = SEP.join(_escape_sep(r) for r in rows)
     if top_k:
@@ -39,8 +58,9 @@ def clamp_lines(lines: list[str], hit: int, line_max: int = LINE_MAX,
     """
     span_start, span_end = 0, len(lines) - 1
     hit_text = lines[hit]
-    out = ([hit_text[:char_max - 1] + ELL] if len(hit_text) > char_max
-           else [hit_text])
+    # escape 後長で判定・切詰する（SEP 膨張で raw≤char_max でも超過し得るため・M）。
+    out = ([_truncate_for_render(hit_text, char_max)]
+           if len(_escape_sep(hit_text)) > char_max else [hit_text])
     up_idx, down_idx = hit - 1, hit + 1
     while True:
         if len(out) >= line_max:

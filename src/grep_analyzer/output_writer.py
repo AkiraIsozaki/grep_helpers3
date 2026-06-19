@@ -37,6 +37,22 @@ def _canonical_data_blob(ordered: list[Hit]) -> bytes:
     return _blob_from_data_rows([_data_line(h) for h in ordered])
 
 
+def _persisted_data_rows(ordered: list[Hit], enc: str) -> list[str]:
+    """output_encoding で実際に永続化される data 行（非可逆置換を反映）を返す（C3）。
+
+    resume は part を output_encoding で読み戻して data_rows を復元する。data_sha256 を
+    utf-8 原文で計算すると、cp932 等の lossy 出力で非表現文字が `?` に置換された分だけ
+    書込側 sha と resume 側 sha が恒久的に食い違い、完了判定が永久 False になる。
+    そこで sha も「encode(enc,replace)→decode(enc)」を通した姿で計算し、resume の復元と
+    一致させる。codec は本用途（utf-8/utf-8-sig/cp932/euc-jp/latin-1）ではいずれも文字
+    独立（utf-8-sig の BOM は decode で除去）なので、part 分割をまたいでも結果は同一。
+    lossless（utf-8 系）では恒等＝従来の data_sha256 とバイト不変。
+    """
+    rows = [_data_line(h) for h in ordered]
+    blob = "\n".join(rows).encode(enc, errors="replace")
+    return blob.decode(enc).split("\n")
+
+
 def _rows_from_part_text(text: str) -> list[str]:
     """part 1 本のデコード済テキストからデータ行列を取り出す。
 
@@ -106,7 +122,10 @@ def finalize(out_dir: "Path", keyword: str, rows: "list[Hit]", opts) -> None:
     width = max(2, len(str(nparts)))
     header = "\t".join(TSV_COLUMNS)
     enc = opts.output_encoding
-    data_sha = hashlib.sha256(_canonical_data_blob(ordered)).hexdigest()
+    # data_sha256 は「実際に enc で永続化される姿」で計算する（lossy 出力でも resume が
+    # 読み戻した data_rows と一致させ完了判定を成立させる・C3）。lossless では従来と不変。
+    data_sha = hashlib.sha256(
+        _blob_from_data_rows(_persisted_data_rows(ordered, enc))).hexdigest()
 
     parts_meta = []
     if nparts == 1:

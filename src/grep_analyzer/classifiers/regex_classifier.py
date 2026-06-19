@@ -22,7 +22,8 @@ _SQL_RULES = [
     (re.compile(r"^\s*(?:WHILE|FOR)\b|\bLOOP\s*$", re.IGNORECASE), "分岐"),
 ]
 _SHELL_RULES_BOURNE = [
-    (re.compile(r"^\s*\w+="), "代入"),
+    # == は比較であり代入ではない。抽出側 BOURNE_ASSIGN_RE の =(?!=) と一致させる（H3）。
+    (re.compile(r"^\s*\w+=(?!=)"), "代入"),
     (re.compile(r"\[\s+.+?(?:=|==|-eq)\s+.+?\]"), "比較"),
     (re.compile(r"^\s*case\s+"), "分岐"),
 ]

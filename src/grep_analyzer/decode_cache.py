@@ -48,7 +48,13 @@ class DecodeCache:
         return total
 
     def _sweep_stale_temp(self) -> None:
-        """クラッシュ/SIGKILL で残った temp（ga_dca_*.tmp）を起動時に掃除する（R-2）。"""
+        """クラッシュ/SIGKILL で残った temp（ga_dca_*.tmp）を起動時に掃除する（R-2）。
+
+        既知の軽微な制約（M）: 同一 --decode-cache-dir を 2 run が並走すると、起動時の
+        本掃除が他 run の進行中 .tmp を消し得る。その put は os.replace で FileNotFoundError
+        → put_failures に落ちるだけで、出力は不変（キャッシュ取りこぼし＝再 decode）。
+        共有ディレクトリの並走運用は性能最適化目的のため、この取りこぼしは許容する。
+        """
         try:
             for p in self._dir.glob(_TMP_PREFIX + "*.tmp"):
                 try:
@@ -115,8 +121,14 @@ class DecodeCache:
         except UnicodeDecodeError:
             self._discard(path)
             return None
-        return (body, meta["enc"], meta["replaced"],
-                meta["language"], meta["dialect"])
+        try:
+            # 必須メタキー欠落（旧/新フォーマット差・部分破損）は KeyError で run を
+            # 落とさず miss へ降格する（破損アーティファクトを正本にしない・H5/#8）。
+            return (body, meta["enc"], meta["replaced"],
+                    meta["language"], meta["dialect"])
+        except KeyError:
+            self._discard(path)
+            return None
 
     def put(self, abspath: str, meta) -> None:
         real = self._canon(abspath)
@@ -124,14 +136,18 @@ class DecodeCache:
         if sig is None:
             return
         text, enc, replaced, language, dialect = meta
-        body = text.encode("utf-8")
-        header = json.dumps({
-            "enc": enc, "replaced": replaced, "language": language,
-            "dialect": dialect, "mtime_ns": sig[0], "size": sig[1],
-            "blen": len(body),
-        }, ensure_ascii=False)
         path = self._artifact_path(real, sig)
         try:
+            # encode を try 内に入れ、lone surrogate 等の UnicodeEncodeError でも run を
+            # 倒さず caching を諦める（decode 側は errors=replace なので通常 surrogate は
+            # path/filename 由来に限られるが、put も decode と同じ「絶対落とさない」契約に
+            # 揃える・H5/L-1）。
+            body = text.encode("utf-8")
+            header = json.dumps({
+                "enc": enc, "replaced": replaced, "language": language,
+                "dialect": dialect, "mtime_ns": sig[0], "size": sig[1],
+                "blen": len(body),
+            }, ensure_ascii=False)
             fd, tmp = tempfile.mkstemp(dir=str(self._dir),
                                        prefix=_TMP_PREFIX, suffix=".tmp")
             try:
@@ -145,8 +161,9 @@ class DecodeCache:
                 except OSError:
                     pass
                 raise
-        except OSError:
-            self.put_failures += 1           # disk full 等は静かに caching を諦める（L-1）
+        except (OSError, UnicodeError):
+            # disk full 等(OSError)／lone surrogate 等(UnicodeError)は静かに caching を諦める（L-1/H5）
+            self.put_failures += 1
             return
         if self._max_bytes is not None:
             self._approx_bytes += len(body)

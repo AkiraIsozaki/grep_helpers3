@@ -28,7 +28,13 @@ from grep_analyzer.fixedpoint._budget_control import (
 )
 from grep_analyzer.fixedpoint._finalize import build_indirect_hits
 from grep_analyzer.fixedpoint._ingest import absorb_results
-from grep_analyzer.fixedpoint._scan import make_decode_cache, make_file_cache, make_pool, scan_hop
+from grep_analyzer.fixedpoint._scan import (
+    decode_cache_namespace,
+    make_decode_cache,
+    make_file_cache,
+    make_pool,
+    scan_hop,
+)
 from grep_analyzer.progress import Progress
 
 
@@ -38,7 +44,9 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
     source_root = Path(source_root)
     unsafe_rels = unsafe_rels or set()
     rel_to_abs = {r: a for r, a in files}
-    ns = "fast" if opts.fast_encoding else ""
+    # main の make_decode_cache と worker の namespace は同一でなければ L2 を共有できない。
+    # decode_cache_namespace は fast/encoding_fallback/lang_map を畳み込む（C1）。
+    ns = decode_cache_namespace(opts)
     # decode_cache_dir 未指定なら temp dir を「ここで 1 度だけ」解決し opts に焼き込む（#9）。
     # これをしないと main の make_decode_cache と各 worker の _worker_init が
     # それぞれ別 mkdtemp を切り、L2 が共有されず temp dir も漏れる

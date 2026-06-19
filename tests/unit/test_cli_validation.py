@@ -77,6 +77,58 @@ def test_memory_limit0は許容_最大縮退の意図的指定(tmp_path):
     assert rc == 0
 
 
+def test_outputがsource_rootと同一は明示エラー(tmp_path):
+    # finalize の孤児削除が {kw}.tsv/{kw}.part*.tsv を無条件 unlink するため、
+    # source-root と同一 output は既存ソースを破壊し得る（H6）。
+    (tmp_path / "in").mkdir()
+    with pytest.raises(SystemExit) as ei:
+        cli.main(["--input", str(tmp_path / "in"),
+                  "--output", str(tmp_path),
+                  "--source-root", str(tmp_path)])
+    assert ei.value.code != 0
+
+
+def test_outputがinputと同一は明示エラー(tmp_path):
+    (tmp_path / "in").mkdir()
+    (tmp_path / "src").mkdir()
+    with pytest.raises(SystemExit) as ei:
+        cli.main(["--input", str(tmp_path / "in"),
+                  "--output", str(tmp_path / "in"),
+                  "--source-root", str(tmp_path / "src")])
+    assert ei.value.code != 0
+
+
+@pytest.mark.parametrize("spec", ["garbage", ".inc=", "=c", ".inc=c,bad"])
+def test_lang_map不正ペアは黙殺せず明示エラー(tmp_path, spec):
+    # `=` 欠落や ext/lang 空のペアを黙ってスキップすると、タイポが無言で無視され
+    # 上書きが効かないまま成功終了する（M）。明示エラーで気づけるようにする。
+    (tmp_path / "in").mkdir()
+    with pytest.raises(SystemExit) as ei:
+        cli.main(["--input", str(tmp_path / "in"),
+                  "--output", str(tmp_path / "o"),
+                  "--source-root", str(tmp_path), "--lang-map", spec])
+    assert ei.value.code != 0
+
+
+def test_lang_map正当なペアは受理(tmp_path):
+    (tmp_path / "in").mkdir()
+    rc = cli.main(["--input", str(tmp_path / "in"),
+                   "--output", str(tmp_path / "o"),
+                   "--source-root", str(tmp_path), "--lang-map", ".inc=c,.tpl=jsp"])
+    assert rc == 0
+
+
+def test_diagnostics_detail_limit負値は明示エラー(tmp_path):
+    # 負値は diagnostics 側で >0 不成立＝無制限と二重になりヘルプと乖離（M）。
+    (tmp_path / "in").mkdir()
+    with pytest.raises(SystemExit) as ei:
+        cli.main(["--input", str(tmp_path / "in"),
+                  "--output", str(tmp_path / "o"),
+                  "--source-root", str(tmp_path),
+                  "--diagnostics-detail-limit", "-1"])
+    assert ei.value.code != 0
+
+
 def test_stoplist不在は明示エラー(tmp_path):
     (tmp_path / "in").mkdir()
     with pytest.raises(SystemExit) as ei:

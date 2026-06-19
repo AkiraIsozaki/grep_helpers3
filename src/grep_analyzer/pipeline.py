@@ -92,7 +92,8 @@ def run(
         # キーは str(abspath)（未正規化）だが memo は純粋なのでキー差異は性能劣化に留まり出力不変。
         enc_memo = EncMemo()
         from grep_analyzer.fixedpoint._scan import make_decode_cache, meta_cached
-        decode_cache = make_decode_cache(opts, namespace="fast" if opts.fast_encoding else "")
+        # namespace は decode_cache_namespace(opts) が fast/fallback/lang_map を畳み込む（C1）。
+        decode_cache = make_decode_cache(opts)
 
         # --- 2. keyword 単位 direct 構築（既存ロジックを verbatim 流用） ---
         direct_hits: dict[str, list[Hit]] = {}

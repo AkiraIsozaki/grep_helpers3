@@ -86,7 +86,11 @@ def _make_parser() -> argparse.ArgumentParser:
                              "無指定=無制限。--decode-cache-dirでrun跨ぎ運用する際に推奨"
                              "＝復号UTF-8本文は概ねSJIS原本の1.5倍に膨らむため）")
     parser.add_argument("--fast-encoding", action="store_true", dest="fast_encoding",
-                        help="chardet 前に fallback 鎖で strict 復号を試みる高速路（opt-in・SJIS 多数環境向け）")
+                        help="chardet 前に fallback 鎖で strict 復号を試みる高速路"
+                             "（opt-in・SJIS 多数環境向け）。注意: euc-jp ファイルが "
+                             "cp932 strict で誤復号され得る（多くのバイト列が両者で strict "
+                             "成功するため）。誤復号は『要確認』が付かず黙って確定するので、"
+                             "euc-jp 混在環境では使わないこと")
     parser.add_argument("--no-perkw-diag", dest="perkw_diag", action="store_false",
                         default=True,
                         help="per-keyword の rg 再走査を省く（高速化。diagnostics の decode_replaced 帰属のみ変化・TSV不変）")
@@ -134,6 +138,13 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"--input directory not found: {args.input}")
     if not Path(args.source_root).is_dir():
         parser.error(f"--source-root directory not found: {args.source_root}")
+    # --output が --input/--source-root と同一ディレクトリだと、finalize の孤児削除が
+    # {kw}.tsv/{kw}.part*.tsv を無条件 unlink するため既存ソース/入力を破壊し得る（H6）。
+    out_real = Path(args.output).resolve()
+    if out_real == Path(args.source_root).resolve():
+        parser.error("--output must not be the same directory as --source-root")
+    if out_real == Path(args.input).resolve():
+        parser.error("--output must not be the same directory as --input")
     if args.jobs < 1:
         parser.error("--jobs must be >= 1")
     if args.max_depth < 0:
@@ -157,12 +168,23 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--max-passes must be >= 1")
     if args.ripgrep_threshold_bytes < 0:
         parser.error("--ripgrep-threshold-bytes must be >= 0")
+    # 負値は diagnostics.render の `detail_limit > 0` 不成立で「無制限」と二重化し
+    # ヘルプ（0 で無制限）と乖離する。意図を一意にするため負値は明示エラー（M）。
+    if args.diagnostics_detail_limit < 0:
+        parser.error("--diagnostics-detail-limit must be >= 0")
     # 0/負値はキャッシュを毎回全退避＝実質無効化なので明示エラー（無制限は未指定で表す）。
     if args.decode_cache_max_bytes is not None and args.decode_cache_max_bytes < 1:
         parser.error("--decode-cache-max-bytes must be >= 1")
     # ユーザ提供 stoplist の不在/不可読は load_stoplist の未捕捉例外になる前に弾く。
     if args.stoplist is not None and not Path(args.stoplist).is_file():
         parser.error(f"--stoplist file not found: {args.stoplist}")
+    # --lang-map の不正ペア（= 欠落 / ext・lang 空）は黙殺せず明示エラー（M）。
+    if args.lang_map:
+        for pair in args.lang_map.split(","):
+            ext, sep, lang = pair.partition("=")
+            if not sep or not ext or not lang:
+                parser.error(
+                    f"--lang-map invalid pair {pair!r} (expected .ext=lang)")
     opts = _opts_from(args)
     return run(input_dir=Path(args.input), output_dir=Path(args.output),
                source_root=Path(args.source_root), opts=opts)

@@ -6,6 +6,7 @@
 
 import fnmatch
 import os
+import stat as _stat
 from collections.abc import Iterator
 from functools import lru_cache
 from pathlib import Path
@@ -148,7 +149,13 @@ def walk_files(
             root, include=include, exclude=exclude,
             follow_symlinks=follow_symlinks, diag=diag):
         try:
-            if abspath.stat().st_size > max_file_bytes:
+            st = abspath.stat()
+            # 通常ファイル以外（FIFO/デバイス/ソケット）は open().read() がブロック
+            # し得るため、ファイルを開く前に単一 stat の st_mode で弾く（C2）。
+            if not _stat.S_ISREG(st.st_mode):
+                diag.add("walk_skipped_special", relpath)
+                continue
+            if st.st_size > max_file_bytes:
                 diag.add("walk_skipped_large", relpath)
                 continue
             if _is_binary(abspath):
@@ -196,7 +203,14 @@ def _walk_classified(
             root, include=include, exclude=exclude,
             follow_symlinks=follow_symlinks, diag=diag):
         try:
-            size = abspath.stat().st_size
+            st = abspath.stat()
+            # 通常ファイル以外（FIFO/デバイス/ソケット）は open().read() がブロック
+            # し得るため、ファイルを開く前に単一 stat の st_mode で弾く（C2）。
+            if not _stat.S_ISREG(st.st_mode):
+                if diag is not None:
+                    diag.add("walk_skipped_special", relpath)
+                continue
+            size = st.st_size
             if size > max_file_bytes:
                 if diag is not None:
                     diag.add("walk_skipped_large", relpath)

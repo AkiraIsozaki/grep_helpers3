@@ -66,7 +66,12 @@ def meta_cached(enc_memo, decode_cache, key, relpath, raw, lang_map, fallback,
     """decode_cache hit を優先し、miss は meta_via_memo/file_meta と同一結果を put して返す。
 
     seed/finalize の直呼び decode を hop 走査と同じ永続層に乗せる。出力は同値である。
-    """
+
+    既知の性能トレードオフ（M・Low）: 本関数は呼出側が先に read_bytes した `raw` を受ける
+    ため、decode_cache hit でも I/O（read_bytes）は発生し、省けるのは decode/言語判定のみ。
+    対して hop 走査の _read_meta は hit 時に read 自体を省く。direct/seed は「ファイルにつき
+    hop0 で 1 回」の I/O なので、多 hop の hot path（_read_meta 経由）と違い回収余地は小さく、
+    遅延 read 化の複雑さに見合わないため現状を維持する。"""
     if decode_cache is not None:
         dhit = decode_cache.get(key)
         if dhit is not None:
@@ -229,8 +234,32 @@ _WORKER_DECODE_CACHE: "DecodeCache | None" = None
 _WORKER_FAST: bool = False
 
 
-def make_decode_cache(opts, namespace: str = ""):
-    """run 単位の永続デコードキャッシュを返す。decode_cache_dir 無指定なら run 専用 temp を使う。"""
+def decode_cache_namespace(opts) -> str:
+    """decode_cache の namespace を「復号結果を左右する設定」から決定的に導く（C1）。
+
+    永続キャッシュのキーは (namespace, realpath, mtime_ns, size)。mtime/size だけでは
+    ソース不変でも encoding_fallback / lang_map / fast を変えれば復号テキスト・言語判定が
+    変わるため、共有 --decode-cache-dir を run 跨ぎ再利用すると前 run の汚染復号が
+    ヒットしてしまう。これらの設定指紋を namespace に畳み込み、設定変更時は別アーティ
+    ファクトとして正しくミスさせる。fast/非fast の分離もここに集約する（旧 "fast"/"" 相当）。
+    """
+    fp = json.dumps(
+        {
+            "fast": bool(opts.fast_encoding),
+            "fallback": list(opts.encoding_fallback),
+            "lang_map": sorted(opts.lang_map.items()),
+        },
+        ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha1(fp.encode("utf-8", "surrogatepass")).hexdigest()[:16]
+
+
+def make_decode_cache(opts, namespace: "str | None" = None):
+    """run 単位の永続デコードキャッシュを返す。decode_cache_dir 無指定なら run 専用 temp を使う。
+
+    namespace 無指定時は decode_cache_namespace(opts) を使う（復号設定を取り込んだ既定）。
+    """
+    if namespace is None:
+        namespace = decode_cache_namespace(opts)
     return DecodeCache(opts.decode_cache_dir, namespace=namespace,
                        max_bytes=opts.decode_cache_max_bytes)
 

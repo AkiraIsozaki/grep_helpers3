@@ -63,6 +63,10 @@ class Diagnostics:
             msgs = self._detail[cat]
             total = self._counts[cat]                    # 真総数（保持上限で msgs より大のことあり）
             if detail_limit > 0 and not is_exempt(cat) and total > detail_limit:
+                # 真総数は常に summary セクション（上の {cat}\t{count}）に出るため、
+                # detail_limit 経路でも件数は失われない。_MAX_RETAINED 由来の保持上限は
+                # detail_limit < _MAX_RETAINED である限り表示件数に影響せず（先に detail_limit
+                # で頭打ち）、"more"/"total" も真総数基準なので過少表示にならない（M・確認済み）。
                 for msg in msgs[:detail_limit]:
                     out.append(f"{cat}\t{msg}")
                 out.append(f"{cat}\t(... {total - detail_limit} more, {total} total)")
