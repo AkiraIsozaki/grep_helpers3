@@ -14,12 +14,12 @@ from pathlib import Path
 
 from grep_analyzer import __version__
 from grep_analyzer.model import TSV_COLUMNS, Hit, sort_key
-from grep_analyzer.tsv import sanitize_field
+from grep_analyzer.tsv import neutralize_formula, sanitize_field
 
 
 def _data_line(h: Hit) -> str:
-    """1 データ行を生成する（tsv.sanitize_field 適用後にタブ結合）。"""
-    return "\t".join(sanitize_field(c) for c in h.to_row())
+    """1 データ行を生成する（sanitize_field→数式ガード後にタブ結合）。"""
+    return "\t".join(neutralize_formula(sanitize_field(c)) for c in h.to_row())
 
 
 def _blob_from_data_rows(data_rows: list[str]) -> bytes:

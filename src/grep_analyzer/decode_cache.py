@@ -1,8 +1,15 @@
 """decode/言語判定の永続キャッシュ。値は (text, enc, replaced, language, dialect)。
 
-キーに (abspath, mtime_ns, size, namespace) を含むため hop・worker・run を
-またいで安全に共有でき、ソース変更時は自動でミスする。アーティファクトは
+キーに (realpath, mtime_ns, size, namespace) を含むため hop・worker・run を
+またいで安全に共有でき、ソース変更時は自動でミスする。パスは realpath で正規化し、
+direct/seed/scan/finalize が綴り違い（source_root/relpath と walk 由来 abspath、
+symlink 経由など）でも同一アーティファクトを共有する（#2）。アーティファクトは
 disk 上の 1 ファイル（1行 JSON ヘッダ ＋ 改行 ＋ 復号UTF-8本文）として保存する。
+
+耐久性より速度を優先し fsync はしない（本キャッシュは純粋な再計算可能キャッシュで、
+クラッシュで失っても次 run が再 decode するだけ）。代わりにヘッダへ本文バイト長
+`blen` を持たせ、get で実バイト長と照合して truncated／torn write を miss として
+弾く（破損アーティファクトを正本として信用しない・#8）。
 """
 
 import hashlib
@@ -11,32 +18,63 @@ import os
 import tempfile
 from pathlib import Path
 
+_TMP_PREFIX = "ga_dca_"
+
 
 class DecodeCache:
-    def __init__(self, cache_dir: "Path | None", namespace: str = "") -> None:
+    def __init__(self, cache_dir: "Path | None", namespace: str = "",
+                 max_bytes: "int | None" = None) -> None:
         self._dir = Path(cache_dir) if cache_dir is not None \
             else Path(tempfile.mkdtemp(prefix="ga_decode_"))
         self._dir.mkdir(parents=True, exist_ok=True)
         self._ns = namespace
+        self._max_bytes = max_bytes
+        self.put_failures = 0           # put が OSError（disk full 等）で no-op になった回数
+        self._sweep_stale_temp()
 
-    def _stat(self, abspath: str):
+    def _sweep_stale_temp(self) -> None:
+        """クラッシュ/SIGKILL で残った temp（ga_dca_*.tmp）を起動時に掃除する（R-2）。"""
         try:
-            st = os.stat(abspath)
+            for p in self._dir.glob(_TMP_PREFIX + "*.tmp"):
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+        except OSError:
+            pass
+
+    def _canon(self, abspath: str) -> str:
+        """パスを realpath で正規化する（symlink/綴り違いで同一実体を共有する・#2）。"""
+        try:
+            return os.path.realpath(abspath)
+        except OSError:
+            return os.fspath(abspath)
+
+    def _stat(self, real: str):
+        try:
+            st = os.stat(real)
         except OSError:
             return None
         return st.st_mtime_ns, st.st_size
 
-    def _artifact_path(self, abspath: str, sig) -> Path:
+    def _artifact_path(self, real: str, sig) -> Path:
         mtime_ns, size = sig
-        key = f"{self._ns}\0{abspath}\0{mtime_ns}\0{size}"
+        key = f"{self._ns}\0{real}\0{mtime_ns}\0{size}"
         h = hashlib.sha1(key.encode("utf-8", "surrogatepass")).hexdigest()
         return self._dir / f"{h}.dca"
 
+    def _discard(self, path: Path) -> None:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
     def get(self, abspath: str):
-        sig = self._stat(abspath)
+        real = self._canon(abspath)
+        sig = self._stat(real)
         if sig is None:
             return None
-        path = self._artifact_path(abspath, sig)
+        path = self._artifact_path(real, sig)
         try:
             with open(path, "rb") as f:
                 raw = f.read()
@@ -44,35 +82,86 @@ class DecodeCache:
             return None
         nl = raw.find(b"\n")
         if nl < 0:
+            self._discard(path)              # ヘッダ改行が無い＝破損（L-2）
             return None
         try:
             meta = json.loads(raw[:nl].decode("utf-8"))
-            body = raw[nl + 1:].decode("utf-8")
         except (ValueError, UnicodeDecodeError):
+            self._discard(path)
             return None
+        body_bytes = raw[nl + 1:]
         if meta.get("mtime_ns") != sig[0] or meta.get("size") != sig[1]:
+            return None                      # sha1 衝突保険（キー以外でも再検証）
+        if meta.get("blen") != len(body_bytes):
+            self._discard(path)              # truncated/torn write を trust しない（#8）
+            return None
+        try:
+            body = body_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            self._discard(path)
             return None
         return (body, meta["enc"], meta["replaced"],
                 meta["language"], meta["dialect"])
 
     def put(self, abspath: str, meta) -> None:
-        sig = self._stat(abspath)
+        real = self._canon(abspath)
+        sig = self._stat(real)
         if sig is None:
             return
         text, enc, replaced, language, dialect = meta
+        body = text.encode("utf-8")
         header = json.dumps({
             "enc": enc, "replaced": replaced, "language": language,
             "dialect": dialect, "mtime_ns": sig[0], "size": sig[1],
+            "blen": len(body),
         }, ensure_ascii=False)
-        path = self._artifact_path(abspath, sig)
-        fd, tmp = tempfile.mkstemp(dir=str(self._dir), prefix="ga_dca_", suffix=".tmp")
+        path = self._artifact_path(real, sig)
         try:
-            with os.fdopen(fd, "wb") as f:
-                f.write(header.encode("utf-8") + b"\n")
-                f.write(text.encode("utf-8"))
-            os.replace(tmp, path)
-        except OSError:
+            fd, tmp = tempfile.mkstemp(dir=str(self._dir),
+                                       prefix=_TMP_PREFIX, suffix=".tmp")
             try:
-                os.unlink(tmp)
-            except OSError:
-                pass
+                with os.fdopen(fd, "wb") as f:
+                    f.write(header.encode("utf-8") + b"\n")
+                    f.write(body)
+                os.replace(tmp, path)        # 原子的に可視化（torn write は get の blen で弾く）
+            except BaseException:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
+        except OSError:
+            self.put_failures += 1           # disk full 等は静かに caching を諦める（L-1）
+            return
+        if self._max_bytes is not None:
+            self._enforce_budget()
+
+    def _enforce_budget(self) -> None:
+        """max_bytes 超過時に古い（mtime 昇順）アーティファクトから退避する（R-1）。
+
+        opt-in（max_bytes 指定時のみ）。退避はキャッシュミス＝再 decode に降格するだけで
+        出力には影響しない。超過時のみディレクトリを舐めるので通常 put は安価。
+        """
+        try:
+            arts = []
+            total = 0
+            for p in self._dir.glob("*.dca"):
+                try:
+                    stt = p.stat()
+                except OSError:
+                    continue
+                arts.append((stt.st_mtime_ns, stt.st_size, p))
+                total += stt.st_size
+            if total <= self._max_bytes:
+                return
+            arts.sort(key=lambda t: t[0])    # 古い mtime 先頭
+            for _mt, size, p in arts:
+                if total <= self._max_bytes:
+                    break
+                try:
+                    p.unlink()
+                    total -= size
+                except OSError:
+                    pass
+        except OSError:
+            pass

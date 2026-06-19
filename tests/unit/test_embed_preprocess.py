@@ -226,3 +226,21 @@ def test_angular複数行式のパイプ後で後続行を消し過ぎない():
     # 本式は of→= 縮約を含まないため char 長も保存される（一般の不変量は「行数保存」で、
     # ngFor の of→= を含む式では len が 1 縮む＝spec §3.4 best-effort）。
     assert len(out) == len(src), "B7b: of を含まない式は char 長も保存（行数保存は一般不変量）"
+
+
+def test_effective_languageはcache指定でinline_template_spansを再計算しない(monkeypatch):
+    # typescript 各ヒットで全文に DOTALL 正規表現を掛けるのを共有 cache で 1 回に集約（#O）。
+    from grep_analyzer import embed_preprocess as ep
+    calls = {"n": 0}
+    real = ep.inline_template_spans
+
+    def spy(src):
+        calls["n"] += 1
+        return real(src)
+
+    monkeypatch.setattr(ep, "inline_template_spans", spy)
+    text = "@Component({ template: `<div>{{x}}</div>` })\nconst y = 1;\n"
+    cache = {}
+    ep.effective_language("typescript", text, 1, cache=cache)
+    ep.effective_language("typescript", text, 2, cache=cache)
+    assert calls["n"] == 1                  # 2 ヒットでも spans は 1 回だけ計算

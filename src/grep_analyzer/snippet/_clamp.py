@@ -10,8 +10,19 @@ LINE_MAX = 12
 CHAR_MAX = 800
 
 
+def _escape_sep(line: str) -> str:
+    """行中の区切り列 SEP(' \\n '=U+0020 005C 006E 0020) と同一 4 文字並びの
+    \\(U+005C) を \\\\ へ二重化し、区切りと本文の曖昧化を防ぐ。
+
+    snippet 出力の最終段（連結直前）で適用するのが契約である（#J）。truncation の
+    後に escape することで、切り詰めが二重バックスラッシュを途中で割って中途半端な
+    escape を残すことがない（escape は常に確定済みテキスト全体に対して 1 回だけ走る）。
+    """
+    return line.replace(SEP, " \\\\n ")
+
+
 def _render(rows: list[str], top_k: int, bot_k: int) -> str:
-    body = SEP.join(rows)
+    body = SEP.join(_escape_sep(r) for r in rows)
     if top_k:
         body = f"{ELL}(+{top_k}上行省略)" + body
     if bot_k:

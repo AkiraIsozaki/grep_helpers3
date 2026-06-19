@@ -16,18 +16,33 @@ _REF_KIND = {"constant": "indirect:constant", "var": "indirect:var",
              "getter": "indirect:getter", "setter": "indirect:setter"}
 
 
+def _live_edges(state: ChaseState):
+    """capped シンボルを端点に持たないエッジ列を 1 度だけ materialize する。
+
+    #G: capped は scan 除外だけでなく provenance からも一貫排除する。従来は child が
+    capped のエッジは finalize の done 判定で落ちる一方、parent が capped のエッジは
+    graph に残り chain に現れる非対称があった。両端で除外して揃える。
+    #N: sorted_unique() を 2 度呼ぶと spill 時にスピルファイルのディスク再パースと
+    sorted(set(...)) が二重化する。1 度だけ評価して使い回す。
+    """
+    cap = state.capped
+    return [(p, c) for p, c in state.edge_store.sorted_unique()
+            if p.symbol not in cap and c.symbol not in cap]
+
+
 def build_indirect_hits(state: ChaseState) -> list[Hit]:
     """edge_store を走査し indirect Hit 列を決定的に構築する。"""
     opts = state.options
     diag = state.diagnostics
-    for p, c in state.edge_store.sorted_unique():
+    edges = _live_edges(state)
+    for p, c in edges:
         state.graph.add_edge(p, c)
 
     indirect: list[Hit] = []
     seen: set[Occurrence] = set()
     line_cache: dict[str, list[str]] = {}
     file_meta_by_relpath: dict[str, tuple[str, str, str]] = {}
-    for _, c in state.edge_store.sorted_unique():
+    for _, c in edges:
         if c in seen or c.symbol not in (state.chase_done | state.terminal_done):
             continue
         if state.graph.is_seed_location(c.relpath, c.lineno):

@@ -106,7 +106,14 @@ def _smoke_ok(rg_path) -> bool:
 
 
 def _resolve_rg(force: bool = False):
-    """env→同梱(sha256照合)→which の順で実行可能な rg を解決（run 単位キャッシュ・副作用あり）。"""
+    """env→同梱(sha256照合)→which の順で実行可能な rg を解決（run 単位キャッシュ・副作用あり）。
+
+    信頼モデル（明示）: sha256 照合は **同梱バイナリのみ**に適用する。GREP_ANALYZER_RG
+    （env 上書き）と PATH 上の `rg`（which）は照合せずそのまま実行する＝これらは
+    オペレータが制御する信頼境界とみなす。同梱物の sha256 ピンは「同梱した rg が
+    改竄されていない」ことだけを保証し、「実行される rg が常に検証済み」を意味しない。
+    env/PATH を握れる主体は任意コードを prefilter として実行できる（想定内）。
+    """
     global _RG_CACHE, _RG_RESOLVED
     if _RG_RESOLVED and not force:
         return _RG_CACHE
@@ -145,6 +152,11 @@ def available() -> bool:
 # 超える候補数はチャンク分割し結果を union する（チャンク境界は集合に影響しない）。
 _ARG_BYTES_BUDGET = 512 * 1024
 
+# prefilter 1 回の rg 呼び出しの上限秒。60GB の未信頼ツリーで rg が wedge（NFS
+# スタール・symlink ストーム等）しても解析全体を無限ハングさせない安全弁。
+# 超過は TimeoutExpired→None＝全件走査フォールバック（rc∉{0,1} と同じ縮退）。
+_RG_TIMEOUT_SEC = 1800
+
 
 def _run_rg_list(rg, pat_path, root, paths):
     """`rg -l -f pat` を paths（None なら全件 `.`）に対し実行し relpath 集合を返す。
@@ -164,8 +176,9 @@ def _run_rg_list(rg, pat_path, root, paths):
         # text=False（bytes 出力）: SJIS 等の非 UTF-8 ファイル名を rg が生バイトで出力するため
         # text=True だと UTF-8 デコードで全体が落ちる。bytes で受け、os.fsdecode
         # （FS codec＋surrogateescape）で walk.py の relpath 表現と一致させる。
-        proc = subprocess.run(args, cwd=str(root), capture_output=True, check=False)
-    except OSError:
+        proc = subprocess.run(args, cwd=str(root), capture_output=True,
+                               check=False, timeout=_RG_TIMEOUT_SEC)
+    except (OSError, subprocess.TimeoutExpired):
         return None
     if proc.returncode not in (0, 1):
         return None

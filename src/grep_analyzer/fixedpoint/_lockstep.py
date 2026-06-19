@@ -14,12 +14,16 @@
 - progress.start/hop/done の呼出回数も単一 keyword で逐次版と一致。
 """
 
+import shutil
+import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 from grep_analyzer import ripgrep as _rg
 from grep_analyzer.fixedpoint._budget_control import (
     apply_global_cap,
     compute_nchunks_union,
+    degrade_insufficient,
     maybe_spill,
 )
 from grep_analyzer.fixedpoint._finalize import build_indirect_hits
@@ -35,6 +39,14 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
     unsafe_rels = unsafe_rels or set()
     rel_to_abs = {r: a for r, a in files}
     ns = "fast" if opts.fast_encoding else ""
+    # decode_cache_dir 未指定なら temp dir を「ここで 1 度だけ」解決し opts に焼き込む（#9）。
+    # これをしないと main の make_decode_cache と各 worker の _worker_init が
+    # それぞれ別 mkdtemp を切り、L2 が共有されず temp dir も漏れる
+    # （pipeline 本流は事前解決済みだが run_fixedpoint shim / 直接呼びがこの穴を踏む）。
+    _auto_cache_dir = None
+    if decode_cache is None and opts.decode_cache_dir is None:
+        _auto_cache_dir = Path(tempfile.mkdtemp(prefix="ga_decode_"))
+        opts = replace(opts, decode_cache_dir=_auto_cache_dir)
     if decode_cache is None:
         decode_cache = make_decode_cache(opts, namespace=ns)
     for st in states_by_kw.values():
@@ -91,6 +103,16 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
                     if sc_k or stm_k:
                         st.diagnostics.add(
                             "automaton_split", f"hop={ghop} chunks={n_actual_chunks}")
+            # 縮退不足（max_passes 頭打ちでも予算超過が残る）を live keyword に可視化する（#F）。
+            if degrade_insufficient(scan_symbols, nchunks, opts=opts,
+                                    budget=next(iter(states_by_kw.values())).budget,
+                                    states=list(states_by_kw.values())):
+                for kw, st in states_by_kw.items():
+                    sc_k, stm_k = per_kw[kw]
+                    if sc_k or stm_k:
+                        st.diagnostics.add(
+                            "degrade_chunk_capped",
+                            f"hop={ghop} chunks={n_actual_chunks} union={len(scan_symbols)}")
             # per-keyword で decode_replaced/encoding_of を帰属させる。
             # 共有 union 走査は global hop ごとに1回だが、absorb の per-relpath 副作用
             # （encoding_of.setdefault / decode_replaced）は「逐次版 keyword K がその hop で
@@ -138,3 +160,5 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
                 st.edge_store.close()     # ベストエフォートで閉じる（後続 state を守る）
             except Exception:
                 pass
+        if _auto_cache_dir is not None:
+            shutil.rmtree(_auto_cache_dir, ignore_errors=True)   # auto temp の後始末（#9）

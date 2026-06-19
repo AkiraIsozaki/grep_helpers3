@@ -231,7 +231,8 @@ _WORKER_FAST: bool = False
 
 def make_decode_cache(opts, namespace: str = ""):
     """run 単位の永続デコードキャッシュを返す。decode_cache_dir 無指定なら run 専用 temp を使う。"""
-    return DecodeCache(opts.decode_cache_dir, namespace=namespace)
+    return DecodeCache(opts.decode_cache_dir, namespace=namespace,
+                       max_bytes=opts.decode_cache_max_bytes)
 
 
 def _worker_init(lang_map, fallback, jobs, decode_cache_dir, namespace, fast) -> None:

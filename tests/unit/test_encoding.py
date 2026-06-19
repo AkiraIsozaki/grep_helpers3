@@ -98,3 +98,24 @@ def test_fastモードはchardet前にfallback鎖でstrict復号する(monkeypat
     text, used, replaced = enc.decode_bytes(data, ["cp932", "euc-jp", "latin-1"], fast=True)
     assert used == "cp932"
     assert called["chardet"] == 0
+
+
+def test_chardet低confidence検出は要確認フラグを立てる(monkeypatch):
+    # 誤コーデックでも strict 復号は成功し mojibake は U+FFFD を出さない＝検知不能。
+    # せめて chardet が低 confidence で推測した場合は encoding 列＋診断で顕在化する（#3）。
+    monkeypatch.setattr(
+        "grep_analyzer.encoding.chardet.detect",
+        lambda b: {"encoding": "euc-jp", "confidence": 0.3})
+    data = "日本語".encode("euc-jp")            # 有効な euc-jp（strict 成功）
+    text, enc, replaced = decode_bytes(data, DEFAULT_FALLBACK)
+    assert text == "日本語"
+    assert enc == "euc-jp"
+    assert replaced is True                     # 低 confidence は要確認
+
+
+def test_chardet高confidence検出は要確認にしない(monkeypatch):
+    monkeypatch.setattr(
+        "grep_analyzer.encoding.chardet.detect",
+        lambda b: {"encoding": "euc-jp", "confidence": 0.99})
+    text, enc, replaced = decode_bytes("日本語".encode("euc-jp"), DEFAULT_FALLBACK)
+    assert enc == "euc-jp" and replaced is False

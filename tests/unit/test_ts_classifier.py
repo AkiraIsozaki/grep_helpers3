@@ -79,3 +79,20 @@ def test_文ブロック内ネストコメントもコメントになる():
 
 def test_コード同居行はコメントにせずコード分類():
     assert classify_ts("java", 'class A {\n int x = 1; // 777\n}\n', 2) == ("宣言", "high")
+
+
+def test_巨大ソースはparseを諦めその他lowへ決定的降格(monkeypatch):
+    # 60GB 想定で --max-file-bytes を上げた際の巨大 minified 1 ファイルで worker OOM を防ぐ。
+    # 上限超は _ParseFailed→("その他","low") に決定的降格する（#K）。
+    from grep_analyzer.classifiers import ts_classifier
+    monkeypatch.setattr(ts_classifier, "_MAX_PARSE_BYTES", 100)
+    big = "class A { int x = 1; }\n" + "// pad " * 50    # >100 bytes
+    assert len(big.encode("utf-8")) > 100
+    assert ts_classifier.classify_ts("java", big, 1) == ("その他", "low")
+
+
+def test_上限以内のソースは通常どおりAST分類される(monkeypatch):
+    from grep_analyzer.classifiers import ts_classifier
+    monkeypatch.setattr(ts_classifier, "_MAX_PARSE_BYTES", 10_000)
+    cat, conf = ts_classifier.classify_ts("java", "class A { int x = 1; }\n", 1)
+    assert conf == "high"

@@ -80,6 +80,11 @@ def _make_parser() -> argparse.ArgumentParser:
                         help="diagnostics 詳細の縮約上限（0 で無制限＝従来同値）")
     parser.add_argument("--decode-cache-dir", default=None, dest="decode_cache_dir",
                         help="復号/言語判定の永続キャッシュ置き場（run跨ぎ再利用可。無指定はrun専用temp）")
+    parser.add_argument("--decode-cache-max-bytes", type=int, default=None,
+                        dest="decode_cache_max_bytes",
+                        help="永続キャッシュの上限バイト（超過時に古い順でLRU退避。"
+                             "無指定=無制限。--decode-cache-dirでrun跨ぎ運用する際に推奨"
+                             "＝復号UTF-8本文は概ねSJIS原本の1.5倍に膨らむため）")
     parser.add_argument("--fast-encoding", action="store_true", dest="fast_encoding",
                         help="chardet 前に fallback 鎖で strict 復号を試みる高速路（opt-in・SJIS 多数環境向け）")
     parser.add_argument("--no-perkw-diag", dest="perkw_diag", action="store_false",
@@ -108,6 +113,7 @@ def _opts_from(args: argparse.Namespace) -> EngineOptions:
         max_rows_per_part=args.max_rows_per_part,
         diagnostics_detail_limit=args.diagnostics_detail_limit,
         decode_cache_dir=Path(args.decode_cache_dir) if args.decode_cache_dir else None,
+        decode_cache_max_bytes=args.decode_cache_max_bytes,
         fast_encoding=args.fast_encoding,
         perkw_diag=args.perkw_diag,
     )
@@ -151,6 +157,9 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--max-passes must be >= 1")
     if args.ripgrep_threshold_bytes < 0:
         parser.error("--ripgrep-threshold-bytes must be >= 0")
+    # 0/負値はキャッシュを毎回全退避＝実質無効化なので明示エラー（無制限は未指定で表す）。
+    if args.decode_cache_max_bytes is not None and args.decode_cache_max_bytes < 1:
+        parser.error("--decode-cache-max-bytes must be >= 1")
     # ユーザ提供 stoplist の不在/不可読は load_stoplist の未捕捉例外になる前に弾く。
     if args.stoplist is not None and not Path(args.stoplist).is_file():
         parser.error(f"--stoplist file not found: {args.stoplist}")

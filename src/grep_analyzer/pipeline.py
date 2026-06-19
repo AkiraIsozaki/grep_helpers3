@@ -12,13 +12,11 @@ from grep_analyzer.classify import classify_hit
 from grep_analyzer.diagnostics import Diagnostics, SECTION_8_4_CATEGORIES
 from grep_analyzer.dispatch import (
     LANG_SAMPLE_BYTES,
-    detect_language,
-    detect_shell_dialect,
     extension_resolves_language,
     shebang_dialect,
     shebang_language,
 )
-from grep_analyzer.encoding import DEFAULT_FALLBACK, decode_bytes, decode_with_memo
+from grep_analyzer.encoding import DEFAULT_FALLBACK, decode_bytes
 from grep_analyzer.fixedpoint import EngineOptions, run_fixedpoint_multi
 from grep_analyzer.fixedpoint._encmemo import EncMemo
 from grep_analyzer.fixedpoint._seed import initialize_state
@@ -68,7 +66,7 @@ def run(
         lang_map = opts.lang_map
         # --- 1. walk + 実効 use_ripgrep 解決（walk 由来診断は walk_diag に集約） ---
         walk_diag = Diagnostics()
-        # collect_files_ex: 64KiB NUL prefix（collect_files の 8KiB より厳格）＋ total_bytes/unsafe_rels を prefilter 判定に利用する
+        # collect_files_ex: 64KiB NUL prefix（_is_binary と同一窓・#I 統一）＋ total_bytes/unsafe_rels を prefilter 判定に利用する
         def _walk_cb(n):
             print(f"[grep_analyzer] walking {n} files...", file=sys.stderr, flush=True)
         files, total_bytes, unsafe_rels = collect_files_ex(
@@ -89,7 +87,7 @@ def run(
         # （jobs>1 の並列 SCAN は process-local の _WORKER_ENC を使い fork 越しに共有不可）。
         # キーは str(abspath)（未正規化）だが memo は純粋なのでキー差異は性能劣化に留まり出力不変。
         enc_memo = EncMemo()
-        from grep_analyzer.fixedpoint._scan import make_decode_cache
+        from grep_analyzer.fixedpoint._scan import make_decode_cache, meta_cached
         decode_cache = make_decode_cache(opts, namespace="fast" if opts.fast_encoding else "")
 
         # --- 2. keyword 単位 direct 構築（既存ロジックを verbatim 流用） ---
@@ -137,16 +135,15 @@ def run(
                     cur_relpath = relpath
                     target = Path(source_root) / relpath
                     if is_contained_relpath(relpath) and target.is_file() and is_within_root(source_root, target):
-                        file_text, enc, replaced = decode_with_memo(
-                            enc_memo, str(target), target.read_bytes(), fb,
-                            fast=opts.fast_encoding)
-                        # EXEC SQL は長い preamble の後に現れることがあるため広めの窓。
-                        # scan/indirect 経路(_scan._meta_from_text)と同一窓で分類するため
-                        # dispatch.LANG_SAMPLE_BYTES を共有（窓の食い違いで経路間分類が割れない）。
+                        # direct も seed/scan/finalize と同じ永続デコードキャッシュ経路
+                        # （meta_cached）を通す。decode/言語判定を hop・worker・run をまたいで
+                        # ファイルにつき 1 回に固定する（#1: 旧 direct は cache 非経由で
+                        # 同一 run 内に seed と二重 decode していた）。language/dialect は
+                        # _meta_from_text が LANG_SAMPLE_BYTES 窓で確定し scan/indirect と同値。
+                        file_text, enc, replaced, language, dialect = meta_cached(
+                            enc_memo, decode_cache, str(target), relpath,
+                            target.read_bytes(), lang_map, fb, fast=opts.fast_encoding)
                         sample = file_text[:LANG_SAMPLE_BYTES]
-                        language = detect_language(relpath, sample, lang_map)
-                        dialect = (detect_shell_dialect(relpath, sample)
-                                   if language == "shell" else "bourne")
                         unsupported = (
                             not extension_resolves_language(relpath, lang_map)
                             and shebang_dialect(sample) is not None  # シェバン行が存在
@@ -228,6 +225,13 @@ def run(
             print(f"[grep_analyzer] 警告: {n_large} 件のファイルが "
                   f"--max-file-bytes({opts.max_file_bytes}) 超で除外されました "
                   f"（詳細は diagnostics.txt の walk_skipped_large）", file=sys.stderr)
+        # decode キャッシュの put 失敗（disk full 等）を可視化する（L-1）。
+        # 失敗しても出力は正しい（再 decode に降格するだけ）が、キャッシュが効かず
+        # 遅くなるため気づけるようにする。main process 分のみ（worker 分は別プロセス）。
+        if getattr(decode_cache, "put_failures", 0):
+            print(f"[grep_analyzer] 警告: decode キャッシュ書込が "
+                  f"{decode_cache.put_failures} 件失敗しました（disk full 等? "
+                  f"--decode-cache-dir の空き容量を確認してください）", file=sys.stderr)
         return 0
     finally:
         if _auto_cache_dir is not None:

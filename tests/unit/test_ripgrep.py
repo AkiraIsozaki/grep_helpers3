@@ -165,3 +165,16 @@ def test_非UTF8ファイル名で落ちず正しく一致する(tmp_path):
     rel_abs = {name: tmp_path / name, "other.sh": tmp_path / "other.sh"}
     got = prefilter(tmp_path, rel_abs, ["getName"])   # 例外を出さない
     assert got is not None and name in got and "other.sh" not in got
+
+
+def test_run_rg_listはtimeoutでNoneへフォールバック(monkeypatch):
+    # wedge した rg（NFS スタール等）で解析全体がハングしないこと。
+    import subprocess
+    from grep_analyzer import ripgrep
+
+    def fake_run(args, **kw):
+        assert kw.get("timeout") is not None      # timeout を必ず渡す
+        raise subprocess.TimeoutExpired(args, kw["timeout"])
+
+    monkeypatch.setattr(ripgrep.subprocess, "run", fake_run)
+    assert ripgrep._run_rg_list("rg", "/tmp/pat", Path("."), ["."]) is None

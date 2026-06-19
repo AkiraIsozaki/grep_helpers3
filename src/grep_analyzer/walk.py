@@ -7,6 +7,7 @@
 import fnmatch
 import os
 from collections.abc import Iterator
+from functools import lru_cache
 from pathlib import Path
 
 from grep_analyzer.diagnostics import Diagnostics
@@ -46,23 +47,38 @@ def _match_any(relpath: str, patterns: list[str]) -> bool:
 def is_contained_relpath(relpath: str) -> bool:
     """relpath が source_root 配下に収まる安全な相対パスか。
 
-    絶対パス・空・`..` を含むパスを拒否する（パストラバーサル／絶対パス注入の防御）。
+    絶対パス・空・`..`・NUL 混入を拒否する（パストラバーサル／絶対パス注入の防御）。
+    NUL は明示拒否し、下流 is_file() の偶然の fail-close やガード順に依存しない
+    （is_within_root は NUL で ValueError を投げるため、本関数で先に弾く）。
     """
-    if not relpath or os.path.isabs(relpath):
+    if not relpath or "\x00" in relpath or os.path.isabs(relpath):
         return False
     return ".." not in Path(relpath).parts
 
 
+@lru_cache(maxsize=8)
+def _realpath_root(root_str: str) -> str:
+    """root の realpath をキャッシュする（run 中 root は不変・per-hit 再 syscall を排す・#Q）。"""
+    return os.path.realpath(root_str)
+
+
 def is_within_root(root, target) -> bool:
-    """target の realpath が root の realpath 配下か（symlink 越えの脱出を拒否）。"""
-    root_real = os.path.realpath(root)
+    """target の realpath が root の realpath 配下か（symlink 越えの脱出を拒否）。
+
+    root の realpath は per-hit で同値なのでキャッシュする。target は毎回新規に解決する
+    （検査対象そのものなのでキャッシュしない）。
+    """
+    root_real = _realpath_root(str(root))
     target_real = os.path.realpath(target)
     return target_real == root_real or target_real.startswith(root_real + os.sep)
 
 
 def _is_binary(path: Path) -> bool:
+    # NUL 走査窓は _classify_bytes と同じ _PREFIX(64KiB) に統一する（#I）。
+    # 旧 8KiB 窓では walk_files(legacy 経路) と collect_files_ex(64KiB) が
+    # 8〜64KiB の NUL を持つ同一ファイルで included/excluded に分岐していた。
     with open(path, "rb") as f:
-        return b"\x00" in f.read(8192)
+        return b"\x00" in f.read(_PREFIX)
 
 
 _PREFIX = 64 * 1024
@@ -74,7 +90,7 @@ _BOMS = (b"\x00\x00\xfe\xff", b"\xff\xfe\x00\x00", b"\xff\xfe", b"\xfe\xff")
 def _classify_bytes(head: bytes) -> str:
     """先頭バイト列を 'binary'(NUL) / 'unsafe'(UTF-16/32 BOM=非ASCII透過) / 'ok' に分類する。
 
-    NUL 走査は _PREFIX(64KiB) 全域で、_is_binary の 8KiB より厳格である（_walk_classified 専用）。
+    NUL 走査は _PREFIX(64KiB) 全域で行う（_is_binary と同一窓・#I で統一）。
     """
     for bom in _BOMS:
         if head.startswith(bom):

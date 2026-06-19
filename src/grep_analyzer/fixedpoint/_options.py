@@ -30,6 +30,7 @@ class EngineOptions:
     progress: str = "off"
     spill_dir: Path | None = None
     decode_cache_dir: Path | None = None
+    decode_cache_max_bytes: int | None = None   # 永続デコードキャッシュの上限（None=無制限）
     force_chunks: int = field(default=0, metadata={"test_only": True})
     force_spill: int = field(default=0, metadata={"test_only": True})  # >0 でエッジ N 件目から強制 spill する（テスト専用・本番 0）
     resume: bool = False

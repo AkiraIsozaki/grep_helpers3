@@ -135,3 +135,17 @@ def test_classify_hit_コメント統合_ASTとregex():
     assert classify_hit("java", "", "class A {\n // 777\n}\n", 2, "// 777") == \
         ("コメント", "low")
     assert classify_hit("sql", "", "", 1, "-- 777 comment") == ("コメント", "low")
+
+
+def test_classify_hitは正規表現言語へ渡すcontentを上限でキャップする(monkeypatch):
+    # sql/perl/shell の分類行は従来 uncapped で per-hit コストが無限（線形だが）。
+    # groovy と同様に上限を設ける（#L）。content がキャップ長で渡ることを観測する。
+    from grep_analyzer import classify as clsmod
+    seen = {}
+    monkeypatch.setattr(clsmod, "classify_sql",
+                        lambda content: (seen.__setitem__("len", len(content)),
+                                         ("その他", "medium"))[1])
+    long_content = "SELECT " + "x" * 100_000
+    clsmod.classify_hit("sql", "bourne", "", 1, long_content)
+    assert seen["len"] <= clsmod._CLASSIFY_LINE_CAP
+    assert seen["len"] < len(long_content)

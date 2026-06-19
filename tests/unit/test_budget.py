@@ -57,3 +57,28 @@ def test_compute_nchunks_unionはforce_chunks指定で最小値():
     budget = MemoryBudget(None)
     # min(force_chunks=3, max_passes=8, len(union)=2) == 2
     assert compute_nchunks_union([], ["A", "B"], opts=opts_force3, budget=budget) == 2
+
+
+class _FakeES:
+    def in_memory_len(self):
+        return 0
+
+
+class _FakeSt:
+    introducers = {}
+    edge_store = _FakeES()
+
+
+def test_degrade_insufficientはmax_passes頭打ちかつ予算超過でTrue():
+    from grep_analyzer.fixedpoint._budget_control import degrade_insufficient
+    from grep_analyzer.fixedpoint._options import EngineOptions
+    from grep_analyzer.budget import MemoryBudget
+    opts = EngineOptions(max_passes=8)
+    union = ["S%02d" % i for i in range(16)]
+    st = [_FakeSt()]
+    # nchunks が max_passes に到達し、1 chunk あたり記号が依然予算超 → 縮退不足
+    assert degrade_insufficient(union, 8, opts=opts, budget=MemoryBudget(0), states=st) is True
+    # まだ max_passes 未満なら（分割余地あり）不足ではない
+    assert degrade_insufficient(union, 4, opts=opts, budget=MemoryBudget(0), states=st) is False
+    # 無制限予算は常に False
+    assert degrade_insufficient(union, 8, opts=opts, budget=MemoryBudget(None), states=st) is False

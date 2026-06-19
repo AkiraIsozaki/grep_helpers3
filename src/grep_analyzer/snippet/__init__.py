@@ -6,7 +6,7 @@
 
 from grep_analyzer.snippet._clamp import clamp_lines
 from grep_analyzer.snippet._heuristic import heuristic_span
-from grep_analyzer.snippet._sanitize_line import _escape_sep, _physical_lines
+from grep_analyzer.snippet._sanitize_line import _physical_lines
 from grep_analyzer.snippet._ts import proc_exec_span, ts_span
 from grep_analyzer.embed_preprocess import effective_language, jsp_region_span
 from grep_analyzer.tsv import sanitize_field
@@ -29,13 +29,14 @@ def build_snippet(language: str, dialect: str, file_text: str,
     proc: proc_exec_span → ts_span("proc") → None なら ヒット 1 行。
     sql/shell/perl/groovy: heuristic_span（AST 非使用）。
     `dialect` は将来 cshell 境界用の予約引数（現行は未使用・呼出互換のため受領）。
-    連結前に各行へ sanitize_field→_escape_sep を適用し clamp_lines。
+    各行へ sanitize_field を適用して clamp_lines へ渡す。SEP 衝突エスケープは
+    clamp_lines が truncation 後の最終段で行う（#J: 切り詰めが escape を割らない）。
     """
     lines = lines if lines is not None else _physical_lines(file_text)
     hit = lineno - 1
     if hit < 0 or hit >= len(lines):
         return ""
-    language = effective_language(language, file_text, lineno)
+    language = effective_language(language, file_text, lineno, cache=cache)
     span = None
     if language in ("java", "c", "python", "javascript", "typescript", "tsx"):
         span = ts_span(language, file_text, lineno, cache=cache)
@@ -52,5 +53,5 @@ def build_snippet(language: str, dialect: str, file_text: str,
     span_start, span_end = span
     span_start = max(0, min(span_start, hit))
     span_end = min(len(lines) - 1, max(span_end, hit))
-    body = [_escape_sep(sanitize_field(x)) for x in lines[span_start:span_end + 1]]
+    body = [sanitize_field(x) for x in lines[span_start:span_end + 1]]
     return clamp_lines(body, hit - span_start)

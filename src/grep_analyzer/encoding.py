@@ -5,6 +5,12 @@ import chardet
 # utf-8 → 検出結果 → cp932/euc-jp → latin-1（置換・最終手段）
 DEFAULT_FALLBACK = ["cp932", "euc-jp", "latin-1"]
 
+# chardet がこの値未満の confidence で推測した検出は「要確認」とする（#3）。
+# 誤コーデックでの strict 復号は成功し mojibake を出しても U+FFFD を残さないため
+# 事後検知できない。せめて検出器自身が自信のない推測を顕在化させる。保守的な閾値で
+# 通常の SJIS/EUC（十分な日本語があれば高 confidence）を巻き込まないようにする。
+_LOW_CONFIDENCE = 0.5
+
 
 def decode_bytes(data: bytes, fallback_chain: list[str], fast: bool = False) -> tuple[str, str, bool]:
     """(text, 使用エンコーディング, 置換が発生したか) を返す。
@@ -31,12 +37,18 @@ def decode_bytes(data: bytes, fallback_chain: list[str], fast: bool = False) -> 
             except (UnicodeDecodeError, LookupError):
                 continue
 
-    detected = chardet.detect(data).get("encoding")
+    det = chardet.detect(data)
+    detected = det.get("encoding")
     if detected:
         try:
-            return data.decode(detected), detected.lower(), False
+            text = data.decode(detected)
         except (UnicodeDecodeError, LookupError):
-            pass
+            text = None
+        if text is not None:
+            # confidence 欠落（stub 等）は従来どおり要確認にしない。低 confidence のみ顕在化。
+            conf = det.get("confidence")
+            low = conf is not None and conf < _LOW_CONFIDENCE
+            return text, detected.lower(), low
 
     for enc in fallback_chain[:-1]:
         try:

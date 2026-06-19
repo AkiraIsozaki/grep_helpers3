@@ -85,3 +85,12 @@ def test_stoplist不在は明示エラー(tmp_path):
                   "--source-root", str(tmp_path),
                   "--stoplist", str(tmp_path / "nope.txt")])
     assert ei.value.code != 0
+
+
+def test_decode_cache_max_bytes_0は明示エラー(tmp_path):
+    (tmp_path / "in").mkdir()
+    with pytest.raises(SystemExit) as ei:
+        cli.main(["--input", str(tmp_path / "in"),
+                  "--output", str(tmp_path / "o"),
+                  "--source-root", str(tmp_path), "--decode-cache-max-bytes", "0"])
+    assert ei.value.code != 0

@@ -80,3 +80,19 @@ def compute_nchunks_union(states, union_symbols, *, opts, budget) -> int:
                 n_edges=in_memory_len, n_intro=n_intro)):
         nchunks += 1
     return nchunks
+
+
+def degrade_insufficient(union_symbols, nchunks, *, opts, budget, states) -> bool:
+    """nchunks が max_passes で頭打ちでも予算超過が解消しない「縮退不足」を返す（#F）。
+
+    --memory-limit は決定的 degrade の安全弁だが、union 記号が巨大だと chunk 分割が
+    max_passes(既定8) で打ち切られ、1 chunk あたり記号数が依然予算を超え得る。その状態を
+    呼出側が診断に出せるようにする（黙って縮退が不完全なまま走るのを可視化）。
+    """
+    if budget.unlimited or nchunks < opts.max_passes:
+        return False
+    n_intro = sum(sum(len(v) for v in st.introducers.values()) for st in states)
+    in_memory_len = sum(st.edge_store.in_memory_len() for st in states)
+    per_chunk = -(-len(union_symbols) // max(1, nchunks))
+    return budget.exceeded(_budget.estimate_items(
+        n_symbols=per_chunk, n_edges=in_memory_len, n_intro=n_intro))

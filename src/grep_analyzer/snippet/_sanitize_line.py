@@ -4,7 +4,8 @@
 区切り衝突エスケープ: 行中の ' \\n ' と同一 4 文字並びの \\ を二重化する。
 """
 
-from grep_analyzer.snippet._clamp import SEP
+# _escape_sep は _clamp.py が単一情報源（snippet 最終段で適用するため）。後方互換で再 export。
+from grep_analyzer.snippet._clamp import SEP, _escape_sep  # noqa: F401
 
 
 def _physical_lines(file_text: str) -> list[str]:
@@ -13,9 +14,3 @@ def _physical_lines(file_text: str) -> list[str]:
     if file_text.endswith("\n") and lines and lines[-1] == "":
         lines = lines[:-1]
     return lines
-
-
-def _escape_sep(line: str) -> str:
-    """行中の区切り列 ' \\n '(U+0020 005C 006E 0020) と同一 4 文字並びの
-    \\(U+005C) を \\\\ へ二重化する（区切りと本文の曖昧化を防ぐ）。"""
-    return line.replace(SEP, " \\\\n ")

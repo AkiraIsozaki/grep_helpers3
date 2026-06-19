@@ -112,6 +112,23 @@ def inline_template_spans(ts_source: str) -> list[tuple[int, int]]:
             for m in _INLINE_TEMPLATE.finditer(ts_source)]
 
 
+_SPANS_CACHE_KEY = "_inline_template_spans"
+
+
+def _cached_inline_spans(ts_source: str, cache: dict | None) -> list[tuple[int, int]]:
+    """inline_template_spans を file 単位 cache でメモ化する（#O）。
+
+    cache は classify_hit/build_snippet が同一ファイル内で共有する dict（parse 木と
+    同居）。language 名キー（"typescript" 等）と衝突しない専用キーで spans を保持し、
+    typescript の各ヒットで全文 DOTALL 正規表現を掛け直すのを 1 回に集約する。
+    """
+    if cache is None:
+        return inline_template_spans(ts_source)
+    if _SPANS_CACHE_KEY not in cache:
+        cache[_SPANS_CACHE_KEY] = inline_template_spans(ts_source)
+    return cache[_SPANS_CACHE_KEY]
+
+
 def extract_inline_angular(ts_source: str) -> str:
     """inline template 領域のみ angular 式を残し他を空白化（行数保存）。"""
     kept = list(_blank(ts_source))
@@ -121,13 +138,17 @@ def extract_inline_angular(ts_source: str) -> str:
     return extract_angular_ts("".join(kept))
 
 
-def effective_language(file_language: str, file_text: str, lineno: int) -> str:
+def effective_language(file_language: str, file_text: str, lineno: int,
+                       cache: dict | None = None) -> str:
     """ヒット行の実効言語。typescript の inline template 行のみ angular_inline、
-    それ以外は file_language をそのまま返す。"""
+    それ以外は file_language をそのまま返す。
+
+    cache を渡すと inline template span 計算を file 単位でメモ化する（#O）。
+    """
     if file_language != "typescript":
         return file_language
     hit = lineno - 1
-    for s, e in inline_template_spans(file_text):
+    for s, e in _cached_inline_spans(file_text, cache):
         if s <= hit <= e:
             return "angular_inline"
     return "typescript"

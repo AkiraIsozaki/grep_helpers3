@@ -171,3 +171,15 @@ def test_build_snippet_inline_template行は1行():
     out = build_snippet("typescript", "", src, 3)
     assert "TRACKED" in out
     assert "defineComponent" not in out             # 宣言全体の巨大スパンにならない＝routing 効果
+
+
+def test_clamp_linesはtruncation後にSEPエスケープを適用する_割escape防止():
+    # #J: hit 行が SEP リテラル(' \n ')を含み切り詰めが起きても、escape は
+    # 連結直前（最終段）に行うので二重バックスラッシュを途中で割らない。
+    # 残存した SEP は必ず ' \\n '(二重化)で現れ、未エスケープの SEP は出ない。
+    from grep_analyzer.snippet import clamp_lines
+    out = clamp_lines([" \\n " + "y" * 20], 0, char_max=10)
+    assert out.startswith(" \\\\n ")     # SEP は二重化済み（割られていない）
+    assert out.endswith("…")
+    # 未エスケープの SEP(' \n ' 4文字)が本文中に出現しないこと
+    assert " \\n " not in out[:-1].replace(" \\\\n ", "")

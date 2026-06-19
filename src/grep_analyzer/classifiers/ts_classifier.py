@@ -161,8 +161,15 @@ def bindings_at_line(root, lineno: int, binding_types):
     return out
 
 
+# これを超える host_source（UTF-8 bytes）は AST parse を諦め非 AST 経路へ降格する（#K）。
+# 通常 --max-file-bytes(既定5MB) で巨大ファイルは walk 除外されるが、上限を引き上げた運用で
+# 巨大 minified/生成ファイルが流入すると 1 ファイルで worker が OOM し得る。決定的に
+# ("その他","low")＋1行 snippet へ落とす（再 parse もしない）。
+_MAX_PARSE_BYTES = 12 * 1024 * 1024
+
+
 class _ParseFailed(Exception):
-    """tree-sitter parse() が例外を投げたことを表す内部シグナルである。"""
+    """tree-sitter parse() が例外を投げた／巨大すぎて parse を諦めた内部シグナルである。"""
 
 
 def classify_ts(language: str, source: str, lineno: int,
@@ -206,6 +213,8 @@ def parse_tree(language: str, source: str, cache: dict | None = None):
     # KeyError 等のロジック例外は握り潰さず即死させる。try は .parse() の1呼出のみに絞る。
     parser = _parser(language)
     src_bytes = host_source(language, source).encode("utf-8")
+    if len(src_bytes) > _MAX_PARSE_BYTES:
+        raise _ParseFailed(language)        # OOM 回避＝非 AST 経路へ決定的降格（#K）
     try:
         root = parser.parse(src_bytes).root_node
     except Exception as e:
