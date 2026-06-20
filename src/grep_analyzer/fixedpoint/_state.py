@@ -1,8 +1,9 @@
 """ChaseState: run_fixedpoint の局所状態をデータクラスにまとめる。
 
 main process でのみ保持・更新する（multiprocessing worker には渡さない）。
-worker には (relpath, abspath, symbol_list, lang_map, fallback) のプリミティブのみ渡す
-（pickle 制約と決定性維持のため）。
+worker へ map で渡すのは (relpath, abspath, sig, sym_path) のプリミティブのみで
+（pickle 制約と決定性維持のため）、lang_map/fallback など run 全体で不変の設定は
+worker 起動時に _worker_init が固定する。具体的な引数は _scan._scan_file_worker を正とする。
 """
 
 from dataclasses import dataclass, field

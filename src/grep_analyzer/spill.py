@@ -42,7 +42,7 @@ def serialize_edge(p: Occurrence, c: Occurrence) -> str:
 
 
 def parse_edge(line: str) -> tuple[Occurrence, Occurrence]:
-    """serialize_edge の逆変換である。完全に可逆である。"""
+    """serialize_edge の逆変換（制御文字を含めて round-trip する）。"""
     f = line.rstrip("\n").split("\t")
     return (Occurrence(_dec(f[0]), _dec(f[1]), int(f[2])),
             Occurrence(_dec(f[3]), _dec(f[4]), int(f[5])))

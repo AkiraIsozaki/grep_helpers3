@@ -24,11 +24,14 @@ def _escape_sep(line: str) -> str:
 def _truncate_for_render(text: str, char_max: int) -> str:
     """raw text を「_render の escape 後の最終長が char_max を超えない」よう切り ELL を足す。
 
-    SEP(4 文字)は _escape_sep で 5 文字へ膨らむため、raw 長だけで切ると escape 後に
-    char_max を超え得る（M）。escape 後長 ≤ char_max-len(ELL) となる最大 raw prefix を
-    二分探索で求める。_escape_sep は単調増加なので二分が成立する。返り値は raw prefix＋ELL
-    （_render 側が後段で 1 回だけ escape する契約は維持）。
+    escape 後長が既に char_max 以下ならそのまま返す。SEP(4 文字)は _escape_sep で 5 文字へ
+    膨らむため、raw 長だけで切ると escape 後に char_max を超え得る（M）。超過時は
+    escape 後長 ≤ char_max-len(ELL) となる最大 raw prefix を二分探索で求める。_escape_sep は
+    単調増加なので二分が成立する。返り値は raw prefix＋ELL（_render 側が後段で 1 回だけ
+    escape する契約は維持）。
     """
+    if len(_escape_sep(text)) <= char_max:
+        return text
     budget = char_max - len(ELL)
     if budget < 0:                        # ELL すら入らない極小 char_max（本番 800 では未到達）
         return text[:max(0, char_max)]
@@ -60,9 +63,7 @@ def clamp_lines(lines: list[str], hit: int, line_max: int = LINE_MAX,
     """
     span_start, span_end = 0, len(lines) - 1
     hit_text = lines[hit]
-    # escape 後長で判定・切詰する（SEP 膨張で raw≤char_max でも超過し得るため・M）。
-    out = ([_truncate_for_render(hit_text, char_max)]
-           if len(_escape_sep(hit_text)) > char_max else [hit_text])
+    out = [_truncate_for_render(hit_text, char_max)]
     up_idx, down_idx = hit - 1, hit + 1
     while True:
         if len(out) >= line_max:

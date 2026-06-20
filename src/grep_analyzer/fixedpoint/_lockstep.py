@@ -45,7 +45,8 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
     unsafe_rels = unsafe_rels or set()
     rel_to_abs = {r: a for r, a in files}
     # main の make_decode_cache と worker の namespace は同一でなければ L2 を共有できない。
-    # decode_cache_namespace は fast/encoding_fallback/lang_map を畳み込む（C1）。
+    # decode_cache_namespace は fast/encoding_fallback を畳み込む（C1）。
+    # lang_map は language/dialect 判定にしか効かず復号結果を左右しないため畳み込まない。
     ns = decode_cache_namespace(opts)
     # decode_cache_dir 未指定なら temp dir を「ここで 1 度だけ」解決し opts に焼き込む（#9）。
     # これをしないと main の make_decode_cache と各 worker の _worker_init が
