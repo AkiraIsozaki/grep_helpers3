@@ -28,7 +28,7 @@ def extract_var_symbols(language: str, dialect: str, line: str) -> list[str]:
     """
     line = line[:_MAX_CHASE_LINE]
     if language == "sql":
-        return _sql_extract(dialect, line)
+        return _sql_extract(line)          # SQL は dialect 非依存
     if language == "shell":
         return _shell_extract(dialect, line)
     return []

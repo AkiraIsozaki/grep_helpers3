@@ -6,7 +6,7 @@ from grep_analyzer.classifiers.base import ClassifyResult
 from grep_analyzer.patterns.literal_masking import mask_literals
 from grep_analyzer.patterns.symbol_extraction import GROOVY_LINE_CAP
 
-# Oracle 方言を扱う。_apply は先頭一致を優先する。:= を最優先にし、
+# Oracle 方言を扱う。_classify_by_rules は先頭一致を優先する。:= を最優先にし、
 # WHERE比較→分岐(DECODE/CASE/||)→INSERT/UPDATE代入 の順とする（既存 golden 等価）。
 _SQL_RULES = [
     (re.compile(r":="), "代入"),
@@ -35,7 +35,7 @@ _SHELL_RULES_CSHELL = [
 ]
 
 
-def _apply(rules, line: str) -> ClassifyResult:
+def _classify_by_rules(rules, line: str) -> ClassifyResult:
     for pat, cat in rules:
         if pat.search(line):
             return (cat, "medium")
@@ -54,7 +54,7 @@ def classify_sql(line: str) -> ClassifyResult:
     """SQL行（Oracle方言）を分類する（confidence=medium／コメントは low・内部 mask）。"""
     if _SQL_COMMENT.match(line):
         return ("コメント", "low")
-    return _apply(_SQL_RULES, mask_literals("sql", line))
+    return _classify_by_rules(_SQL_RULES, mask_literals("sql", line))
 
 
 def classify_shell(line: str, dialect: str = "bourne") -> ClassifyResult:
@@ -65,7 +65,7 @@ def classify_shell(line: str, dialect: str = "bourne") -> ClassifyResult:
     if _SHELL_COMMENT.match(line):
         return ("コメント", "low")
     rules = _SHELL_RULES_CSHELL if dialect == "cshell" else _SHELL_RULES_BOURNE
-    return _apply(rules, mask_literals("shell", line))
+    return _classify_by_rules(rules, mask_literals("shell", line))
 
 
 # Perl 規則（先頭一致優先）。比較の裸 < > は -> / => / <= >= を除外する。
@@ -95,7 +95,7 @@ def classify_perl(line: str) -> ClassifyResult:
     """Perl行を分類する（confidence=medium／コメントは low・内部 mask）。"""
     if _PERL_COMMENT.match(line):
         return ("コメント", "low")
-    return _apply(_PERL_RULES, mask_literals("perl", line))
+    return _classify_by_rules(_PERL_RULES, mask_literals("perl", line))
 
 
 def classify_groovy(line: str) -> ClassifyResult:
@@ -103,4 +103,4 @@ def classify_groovy(line: str) -> ClassifyResult:
     line = line[:GROOVY_LINE_CAP]
     if _GROOVY_COMMENT.match(line):
         return ("コメント", "low")
-    return _apply(_GROOVY_RULES, mask_literals("groovy", line))
+    return _classify_by_rules(_GROOVY_RULES, mask_literals("groovy", line))

@@ -5,9 +5,8 @@ ASTChaser プロトコルに準拠する。parse は呼出側が行う。
 """
 import re
 
-from grep_analyzer.classifiers.ts_classifier import bindings_at_line
 from grep_analyzer.classifiers.base import node_text
-from grep_analyzer.model import dedup_symbols
+from grep_analyzer.classifiers.ts_classifier import run_field_chase
 
 _BINDING = {"assignment", "augmented_assignment", "decorated_definition"}
 _CONST_RE = re.compile(r"^[A-Z_][A-Z0-9_]+$")
@@ -65,11 +64,12 @@ def _from_decorated(node, getters, setters):
                 return
 
 
+def _handle_python(node, consts, vars_, getters, setters):
+    if node.type == "decorated_definition":
+        _from_decorated(node, getters, setters)
+    else:
+        _from_assignment(node, consts, vars_)
+
+
 def extract_tree(language, root, lineno):
-    consts, vars_, getters, setters = [], [], [], []
-    for node in bindings_at_line(root, lineno, _BINDING):
-        if node.type == "decorated_definition":
-            _from_decorated(node, getters, setters)
-        else:
-            _from_assignment(node, consts, vars_)
-    return dedup_symbols(consts, vars_, getters, setters)
+    return run_field_chase(root, lineno, _BINDING, _handle_python)

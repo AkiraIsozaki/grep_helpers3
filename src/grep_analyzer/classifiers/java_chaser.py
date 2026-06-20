@@ -6,12 +6,11 @@
 
 import re
 
-from grep_analyzer.classifiers.ts_classifier import bindings_at_line
 from grep_analyzer.classifiers.base import node_text
-from grep_analyzer.model import dedup_symbols
+from grep_analyzer.classifiers.ts_classifier import run_field_chase
 
-_AST_BINDING = {"local_variable_declaration", "field_declaration", "resource",
-                "assignment_expression", "method_invocation", "method_declaration"}
+_BINDING = {"local_variable_declaration", "field_declaration", "resource",
+            "assignment_expression", "method_invocation", "method_declaration"}
 _GETSET_RE = re.compile(r"^(get|set)[A-Z]\w*$")
 
 
@@ -50,8 +49,6 @@ def _handle_java(node, lineno, consts, vars_, getters, setters):
 
 def extract_tree(language, root, lineno):
     """parse 済 root から Java 束縛を field-directed・multi-node 抽出する。"""
-    consts, vars_, getters, setters = [], [], [], []
-    for node in bindings_at_line(root, lineno, _AST_BINDING):
-        _handle_java(node, lineno, consts, vars_, getters, setters)
-    # const/var 抑止・出現順 uniq は dedup_symbols に委譲する（全 chaser 共通）。
-    return dedup_symbols(consts, vars_, getters, setters)
+    return run_field_chase(
+        root, lineno, _BINDING,
+        lambda node, c, v, g, s: _handle_java(node, lineno, c, v, g, s))

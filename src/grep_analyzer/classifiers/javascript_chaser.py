@@ -1,10 +1,9 @@
 """JavaScript の AST chaser を提供する（field-directed）。
 
-`handle_binding` / `_BINDING` は typescript_chaser と共有する。
+`handle_js_binding` / `_BINDING` は typescript_chaser と共有する。
 """
-from grep_analyzer.classifiers.ts_classifier import bindings_at_line
 from grep_analyzer.classifiers.base import node_text
-from grep_analyzer.model import dedup_symbols
+from grep_analyzer.classifiers.ts_classifier import run_field_chase
 
 _BINDING = {"lexical_declaration", "variable_declaration",
             "assignment_expression", "augmented_assignment_expression",
@@ -61,7 +60,7 @@ def _declarators(decl, is_const, consts, vars_):
             _names_from_pattern(name, target)
 
 
-def handle_binding(node, consts, vars_, getters, setters):
+def handle_js_binding(node, consts, vars_, getters, setters):
     t = node.type
     if t == "lexical_declaration":
         is_const = any(not c.is_named and node_text(c) == "const"
@@ -89,7 +88,4 @@ def handle_binding(node, consts, vars_, getters, setters):
 
 
 def extract_tree(language, root, lineno):
-    consts, vars_, getters, setters = [], [], [], []
-    for node in bindings_at_line(root, lineno, _BINDING):
-        handle_binding(node, consts, vars_, getters, setters)
-    return dedup_symbols(consts, vars_, getters, setters)
+    return run_field_chase(root, lineno, _BINDING, handle_js_binding)

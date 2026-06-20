@@ -6,6 +6,7 @@
 # 顕在化し、呼出側 regex 経路は影響を受けない。
 from grep_analyzer.classifiers.base import ClassifyResult
 from grep_analyzer.embed_preprocess import host_grammar, host_source
+from grep_analyzer.model import dedup_symbols
 
 _LANGS: dict | None = None
 
@@ -147,6 +148,19 @@ def bindings_at_line(root, lineno: int, binding_types):
     out = [n for n in _nodes_covering(root, lineno - 1) if n.type in binding_types]
     out.sort(key=lambda n: (n.start_byte, n.end_byte, n.type))
     return out
+
+
+def run_field_chase(root, lineno, binding_types, handler):
+    """対象行の束縛ノードを handler に渡し、集めた4分類を dedup_symbols で正規化して返す。
+
+    各 AST chaser の extract_tree が共有する骨格。handler は
+    `(node, consts, vars_, getters, setters)` を受け取り、該当リストへ name を append する。
+    const/var 抑止・出現順 uniq は dedup_symbols に委譲する（全 chaser 共通）。
+    """
+    consts, vars_, getters, setters = [], [], [], []
+    for node in bindings_at_line(root, lineno, binding_types):
+        handler(node, consts, vars_, getters, setters)
+    return dedup_symbols(consts, vars_, getters, setters)
 
 
 # これを超える host_source（UTF-8 bytes）は AST parse を諦め非 AST 経路へ降格する（#K）。

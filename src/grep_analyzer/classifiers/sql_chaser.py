@@ -20,7 +20,7 @@ def mask(line: str) -> str:
     return mask_literals("sql", line)
 
 
-def _extract_var_symbols(dialect: str, line: str) -> list[str]:
+def _extract_var_symbols(line: str) -> list[str]:
     """行から PL/SQL `:=` の左辺（宣言形は先頭 id）を抽出する。
 
     型付き宣言 `name TYPE := …` では型名でなく先頭 id を採る。
@@ -36,5 +36,5 @@ def extract(dialect: str, line: str) -> ChaseSymbols:
     """
     masked = mask(line)
     consts = [m.group(1) for m in ORACLE_CONSTANT_RE.finditer(masked)]
-    vars_ = _extract_var_symbols(dialect, masked)
+    vars_ = _extract_var_symbols(masked)
     return dedup_symbols(consts, vars_, (), ())
