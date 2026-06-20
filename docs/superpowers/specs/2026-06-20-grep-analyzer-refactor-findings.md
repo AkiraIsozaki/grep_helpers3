@@ -12,8 +12,11 @@
 - 構造分割: STRUCT-toplevelorch-01（cli _validate_args）, STRUCT-toplevelcore-02（decode_cache get）, STRUCT-snippetpatterns-03（ts_span）
 - 簡素化/命名: SIMPL-toplevelorch-02/04, SIMPL-toplevelcore-02, SIMPL-toplevelcore-01（blank集約）, NAME-toplevelorch-01/02/03, NAME-toplevelcore-01/02/03/04, NAME-fixedpoint-03, NAME-snippetpatterns-01/02, SIMPL/CMT-snippetpatterns-01
 
-**見送り（挙動変更のため要相談）:**
-- SIMPL-snippetpatterns-02 / WARN-snippetpatterns-01: `re.IGNORECASE` 除去は大文字キーワードでマッチ集合が変わる挙動変更
+**挙動変更（ユーザー承認の上で実施）:**
+- SIMPL-snippetpatterns-02 / WARN-snippetpatterns-01: `re.IGNORECASE` 除去。大文字 SUB/CLASS/DEF の
+  false-positive 終端を解消（特性化テスト付き・golden 不変）。baseline は 741 passed/10 skipped に
+
+**見送り（挙動変更のため・ユーザー判断で見送り確定）:**
 - SIMPL-toplevelcore-03（classify テーブル化）: module-global の monkeypatch 遅延束縛シームを壊す
 - STRUCT-toplevelorch-03 / SIMPL-toplevelorch-01（walk 統合）: 意図的複製でパリティテスト保護・binary窓が8K/64Kと異なる挙動変更
 - CMT-classifiers-03（re.VERBOSE）: 既存パターンの空白意味が変わる正規表現挙動リスク
