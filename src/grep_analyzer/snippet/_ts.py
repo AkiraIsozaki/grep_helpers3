@@ -73,22 +73,31 @@ def _has_error(node) -> bool:
     return node.is_missing or node.type == "ERROR" or node.has_error
 
 
+def _resolve_sets(language: str):
+    """language の判定用ノード型集合 (gran, stmt, block, paren, parse_lang) を返す。
+
+    対象外言語は None。マスクは parse_tree 内 host_source の 1 回のみで、src は常に file_text。
+    """
+    if language in ("java", "c", "proc"):
+        gran = _GRAN_JAVA if host_grammar(language) == "java" else _GRAN_C
+        return gran, _STMT, _BLOCK, _PAREN_ONLY, language
+    if language in _SETS_BY_LANG:
+        gran, stmt, block, paren = _SETS_BY_LANG[language]
+        return gran, stmt, block, paren, language
+    return None
+
+
 def ts_span(language: str, file_text: str, lineno: int, cache: dict | None = None):
     """選択範囲 [s,e]（0始まり物理行）を返す。取れなければ None（→fallback）。
 
     `cache` を渡すとファイル単位でパース木を共有し、classify/snippet/別行の再 parse を防ぐ。
     """
-    if language in ("java", "c", "proc"):
-        gran = _GRAN_JAVA if host_grammar(language) == "java" else _GRAN_C
-        stmt, block, paren, parse_lang = _STMT, _BLOCK, _PAREN_ONLY, language
-        src = file_text                       # マスクは parse_tree 内 host_source の1回のみ
-    elif language in _SETS_BY_LANG:
-        gran, stmt, block, paren = _SETS_BY_LANG[language]
-        src, parse_lang = file_text, language
-    else:
+    sets = _resolve_sets(language)
+    if sets is None:
         return None
+    gran, stmt, block, paren, parse_lang = sets
     try:
-        root = parse_tree(parse_lang, src, cache=cache)
+        root = parse_tree(parse_lang, file_text, cache=cache)
     except Exception:
         return None
     node = node_at_line(root, lineno)
