@@ -8,7 +8,7 @@ chase.py の dispatcher が `_CHASERS["shell"]` 経由で呼び出す。
 """
 
 from grep_analyzer.model import ChaseSymbols
-from grep_analyzer.patterns.literal_masking import MASK_PATTERNS
+from grep_analyzer.patterns.literal_masking import mask_literals
 from grep_analyzer.patterns.symbol_extraction import (
     BOURNE_ASSIGN_RE,
     BOURNE_READONLY_RE,
@@ -18,8 +18,7 @@ from grep_analyzer.patterns.symbol_extraction import (
 
 def mask(line: str) -> str:
     """Shell のリテラル / コメントを同字数空白に置換する。"""
-    pattern = MASK_PATTERNS["shell"]
-    return pattern.sub(lambda m: " " * len(m.group(0)), line)
+    return mask_literals("shell", line)
 
 
 def _extract_var_symbols(dialect: str, line: str) -> list[str]:

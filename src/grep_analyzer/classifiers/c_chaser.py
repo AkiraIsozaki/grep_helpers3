@@ -7,6 +7,7 @@ Pro*C の EXEC SQL 区間は mask_exec_sql で空白化済みである。
 """
 
 from grep_analyzer.classifiers.ts_classifier import bindings_at_line
+from grep_analyzer.classifiers.base import node_text
 from grep_analyzer.model import dedup_symbols
 
 _AST_BINDING = {"declaration", "field_declaration", "preproc_def",
@@ -17,7 +18,7 @@ def _declarator_name(node):
     """init/pointer/array declarator を再帰的に剥がして末尾 identifier を返す。"""
     t = node.type
     if t in ("identifier", "field_identifier"):
-        return node.text.decode("utf-8", "replace")
+        return node_text(node)
     if t in ("init_declarator", "pointer_declarator", "array_declarator"):
         d = node.child_by_field_name("declarator")
         return _declarator_name(d) if d is not None else None
@@ -35,7 +36,7 @@ def _decl_names(node, out):
 
 def _is_const(node) -> bool:
     # tree-sitter-c の type_qualifier は1トークン1ノードである（const/volatile/...）
-    return any(ch.type == "type_qualifier" and ch.text.decode("utf-8", "replace") == "const"
+    return any(ch.type == "type_qualifier" and node_text(ch) == "const"
                for ch in node.children)
 
 
@@ -44,13 +45,13 @@ def _handle_c(node, consts, vars_):
     if t in ("preproc_def", "preproc_function_def"):
         nm = node.child_by_field_name("name")
         if nm is not None:
-            consts.append(nm.text.decode("utf-8", "replace"))
+            consts.append(node_text(nm))
     elif t in ("declaration", "field_declaration"):
         _decl_names(node, consts if _is_const(node) else vars_)
     elif t == "assignment_expression":
         left = node.child_by_field_name("left")
         if left is not None and left.type == "identifier":
-            vars_.append(left.text.decode("utf-8", "replace"))
+            vars_.append(node_text(left))
 
 
 def extract_tree(language, root, lineno):

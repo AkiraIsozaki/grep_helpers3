@@ -7,6 +7,7 @@
 import re
 
 from grep_analyzer.classifiers.ts_classifier import bindings_at_line
+from grep_analyzer.classifiers.base import node_text
 from grep_analyzer.model import dedup_symbols
 
 _AST_BINDING = {"local_variable_declaration", "field_declaration", "resource",
@@ -17,7 +18,7 @@ _GETSET_RE = re.compile(r"^(get|set)[A-Z]\w*$")
 def _modifier_tokens(node) -> set[str]:
     for ch in node.children:
         if ch.type == "modifiers":
-            return {c.text.decode("utf-8", "replace") for c in ch.children if not c.is_named}
+            return {node_text(c) for c in ch.children if not c.is_named}
     return set()
 
 
@@ -30,19 +31,19 @@ def _handle_java(node, lineno, consts, vars_, getters, setters):
             if ch.type == "variable_declarator":
                 nm = ch.child_by_field_name("name")
                 if nm is not None and nm.type == "identifier":
-                    target.append(nm.text.decode("utf-8", "replace"))
+                    target.append(node_text(nm))
     elif t == "resource":
         nm = node.child_by_field_name("name")
         if nm is not None and nm.type == "identifier":
-            vars_.append(nm.text.decode("utf-8", "replace"))
+            vars_.append(node_text(nm))
     elif t == "assignment_expression":
         left = node.child_by_field_name("left")
         if left is not None and left.type == "identifier":
-            vars_.append(left.text.decode("utf-8", "replace"))
+            vars_.append(node_text(left))
     elif t in ("method_invocation", "method_declaration"):
         nm = node.child_by_field_name("name")
         if nm is not None and nm.start_point[0] == lineno - 1:    # name がヒット行にある場合のみ
-            name = nm.text.decode("utf-8", "replace")
+            name = node_text(nm)
             if _GETSET_RE.match(name):
                 (getters if name[0] == "g" else setters).append(name)
 

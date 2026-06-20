@@ -3,7 +3,7 @@
 import re
 
 from grep_analyzer.classifiers.base import ClassifyResult
-from grep_analyzer.patterns.literal_masking import MASK_PATTERNS
+from grep_analyzer.patterns.literal_masking import mask_literals
 from grep_analyzer.patterns.symbol_extraction import GROOVY_LINE_CAP
 
 # Oracle 方言を扱う。_apply は先頭一致を優先する。:= を最優先にし、
@@ -54,7 +54,7 @@ def classify_sql(line: str) -> ClassifyResult:
     """SQL行（Oracle方言）を分類する（confidence=medium／コメントは low・内部 mask）。"""
     if _SQL_COMMENT.match(line):
         return ("コメント", "low")
-    return _apply(_SQL_RULES, _mask("sql", line))
+    return _apply(_SQL_RULES, mask_literals("sql", line))
 
 
 def classify_shell(line: str, dialect: str = "bourne") -> ClassifyResult:
@@ -65,12 +65,7 @@ def classify_shell(line: str, dialect: str = "bourne") -> ClassifyResult:
     if _SHELL_COMMENT.match(line):
         return ("コメント", "low")
     rules = _SHELL_RULES_CSHELL if dialect == "cshell" else _SHELL_RULES_BOURNE
-    return _apply(rules, _mask("shell", line))
-
-
-def _mask(language: str, line: str) -> str:
-    pat = MASK_PATTERNS.get(language)
-    return line if pat is None else pat.sub(lambda m: " " * len(m.group(0)), line)
+    return _apply(rules, mask_literals("shell", line))
 
 
 # Perl 規則（先頭一致優先）。比較の裸 < > は -> / => / <= >= を除外する。
@@ -100,7 +95,7 @@ def classify_perl(line: str) -> ClassifyResult:
     """Perl行を分類する（confidence=medium／コメントは low・内部 mask）。"""
     if _PERL_COMMENT.match(line):
         return ("コメント", "low")
-    return _apply(_PERL_RULES, _mask("perl", line))
+    return _apply(_PERL_RULES, mask_literals("perl", line))
 
 
 def classify_groovy(line: str) -> ClassifyResult:
@@ -108,4 +103,4 @@ def classify_groovy(line: str) -> ClassifyResult:
     line = line[:GROOVY_LINE_CAP]
     if _GROOVY_COMMENT.match(line):
         return ("コメント", "low")
-    return _apply(_GROOVY_RULES, _mask("groovy", line))
+    return _apply(_GROOVY_RULES, mask_literals("groovy", line))

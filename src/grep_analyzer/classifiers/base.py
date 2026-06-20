@@ -11,6 +11,11 @@ from grep_analyzer.model import ChaseSymbols
 ClassifyResult = tuple[str, str]
 
 
+def node_text(node) -> str:
+    """tree-sitter ノードのバイト列を UTF-8 文字列へ復号する（不正バイトは置換）。"""
+    return node.text.decode("utf-8", "replace")
+
+
 class Chaser(Protocol):
     """言語別 Chaser モジュールの抽出 IF である。
 

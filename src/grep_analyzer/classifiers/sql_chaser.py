@@ -8,7 +8,7 @@ CONSTANT は constant、それ以外は var に振り分ける。getter/setter �
 """
 
 from grep_analyzer.model import ChaseSymbols, dedup_symbols
-from grep_analyzer.patterns.literal_masking import MASK_PATTERNS
+from grep_analyzer.patterns.literal_masking import mask_literals
 from grep_analyzer.patterns.symbol_extraction import (
     ORACLE_CONSTANT_RE,
     ORACLE_DECL_ASSIGN_RE,
@@ -17,8 +17,7 @@ from grep_analyzer.patterns.symbol_extraction import (
 
 def mask(line: str) -> str:
     """SQL のリテラル / コメントを同字数空白に置換する。"""
-    pattern = MASK_PATTERNS["sql"]
-    return pattern.sub(lambda m: " " * len(m.group(0)), line)
+    return mask_literals("sql", line)
 
 
 def _extract_var_symbols(dialect: str, line: str) -> list[str]:

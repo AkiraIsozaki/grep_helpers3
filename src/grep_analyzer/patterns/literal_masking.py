@@ -27,3 +27,14 @@ MASK_SPECS: dict[str, list[str]] = {
 MASK_PATTERNS: dict[str, re.Pattern[str]] = {
     lang: re.compile("|".join(p), re.DOTALL) for lang, p in MASK_SPECS.items()
 }
+
+
+def blank_spans(pattern: re.Pattern[str], text: str) -> str:
+    """pattern のマッチ全体を同字数空白へ置換する（行番号・桁を保つ）。"""
+    return pattern.sub(lambda m: " " * len(m.group(0)), text)
+
+
+def mask_literals(language: str, line: str) -> str:
+    """language のリテラル/コメントを同字数空白へ置換する。未登録言語は素通しする。"""
+    pat = MASK_PATTERNS.get(language)
+    return line if pat is None else blank_spans(pat, line)

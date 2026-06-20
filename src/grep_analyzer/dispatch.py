@@ -4,6 +4,7 @@ import os
 import re
 
 from grep_analyzer.embed_preprocess import _ANGULAR_RE
+from grep_analyzer.patterns.literal_masking import blank_spans
 
 _EXT_MAP = {
     ".java": "java",
@@ -39,7 +40,7 @@ _C_LITERAL_RE = re.compile(
 
 
 def _mask_c_literals(text: str) -> str:
-    return _C_LITERAL_RE.sub(lambda m: " " * len(m.group(0)), text)
+    return blank_spans(_C_LITERAL_RE, text)
 
 
 # シェバンは第1物理行の1列目（先頭 BOM=U+FEFF 可）に #! が必須である。

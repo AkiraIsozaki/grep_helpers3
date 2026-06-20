@@ -7,7 +7,7 @@ getter/setter は型解決依存のため追跡しない。heredoc/POD/任意デ
 """
 
 from grep_analyzer.model import ChaseSymbols, dedup_symbols
-from grep_analyzer.patterns.literal_masking import MASK_PATTERNS
+from grep_analyzer.patterns.literal_masking import mask_literals
 from grep_analyzer.patterns.symbol_extraction import (
     PERL_ASSIGN_RE,
     PERL_USE_CONSTANT_RE,
@@ -16,8 +16,7 @@ from grep_analyzer.patterns.symbol_extraction import (
 
 def mask(line: str) -> str:
     """Perl のリテラル / コメントを同字数空白に置換する（$# は壊さない）。"""
-    pattern = MASK_PATTERNS["perl"]
-    return pattern.sub(lambda m: " " * len(m.group(0)), line)
+    return mask_literals("perl", line)
 
 
 def extract(dialect: str, line: str) -> ChaseSymbols:

@@ -97,47 +97,43 @@ def _parser(language: str) -> "Parser":
     return parser
 
 
-def node_at_line(root, lineno: int):
-    """対象行（lineno は 1 始まり）を内包する最小ノードを決定的に返す。
+def _span_key(node):
+    """node_at_line/binding_at_line が使う全順序キー（走査順に依存しない一意選択用）。"""
+    return (node.end_point[0] - node.start_point[0], node.start_byte,
+            node.end_byte, node.type)
 
-    `(行スパン, start_byte, end_byte, ノード型)` の最小で一意選択する（走査順に依存しない全順序）。
-    classify_ts と snippet/_ts.py が共有する。
+
+def _nodes_covering(root, target: int):
+    """target 行（0 始まり）を内包するノードを走査順に yield する。
+
+    親が target を内包するときだけ子へ降りる（最小ノード探索の枝刈り）。
+    走査順は決定的なので、同一キーのノードは最初に出会ったものが優先される。
     """
-    target = lineno - 1
-    best = None
-    best_key = None
     cursor = [root]
     while cursor:
         node = cursor.pop()
         if node.start_point[0] <= target <= node.end_point[0]:
-            key = (node.end_point[0] - node.start_point[0], node.start_byte, node.end_byte, node.type)
-            if best_key is None or key < best_key:
-                best, best_key = node, key
+            yield node
             cursor.extend(node.children)
-    return best
+
+
+def node_at_line(root, lineno: int):
+    """対象行（lineno は 1 始まり）を内包する最小ノードを決定的に返す。
+
+    `_span_key`（行スパン, start_byte, end_byte, 型）の最小で一意選択する。
+    classify_ts と snippet/_ts.py が共有する。
+    """
+    return min(_nodes_covering(root, lineno - 1), key=_span_key, default=None)
 
 
 def binding_at_line(root, lineno: int, binding_types):
     """対象行を内包し binding_types に属する最小スパンノードを決定的に返す。
 
-    node_at_line と同じ全順序キー (行スパン, start_byte, end_byte, 型) で一意選択。
-    「最左最小葉から climb」では届かない束縛（例: `class C { get x() {} }`）を
-    直接拾うために使う。該当なしのときは None を返す。
+    node_at_line と同じ全順序キーで一意選択。「最左最小葉から climb」では届かない
+    束縛（例: `class C { get x() {} }`）を直接拾うために使う。該当なしは None。
     """
-    target = lineno - 1
-    best = None
-    best_key = None
-    cursor = [root]
-    while cursor:
-        node = cursor.pop()
-        if node.start_point[0] <= target <= node.end_point[0]:
-            if node.type in binding_types:
-                key = (node.end_point[0] - node.start_point[0], node.start_byte,
-                       node.end_byte, node.type)
-                if best_key is None or key < best_key:
-                    best, best_key = node, key
-            cursor.extend(node.children)
-    return best
+    covering = (n for n in _nodes_covering(root, lineno - 1) if n.type in binding_types)
+    return min(covering, key=_span_key, default=None)
 
 
 def bindings_at_line(root, lineno: int, binding_types):
@@ -148,15 +144,7 @@ def bindings_at_line(root, lineno: int, binding_types):
     順序は (start_byte, end_byte, type) 昇順で安定（決定性）。
     name 行ゲート（method 系のみ name 行に絞る）は各 chaser ハンドラの責務とする。
     """
-    target = lineno - 1
-    out = []
-    cursor = [root]
-    while cursor:
-        node = cursor.pop()
-        if node.start_point[0] <= target <= node.end_point[0]:
-            if node.type in binding_types:
-                out.append(node)
-            cursor.extend(node.children)
+    out = [n for n in _nodes_covering(root, lineno - 1) if n.type in binding_types]
     out.sort(key=lambda n: (n.start_byte, n.end_byte, n.type))
     return out
 

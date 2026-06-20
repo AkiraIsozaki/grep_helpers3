@@ -6,6 +6,7 @@ JS 規則は javascript_chaser から再利用する。tsx は language 引数�
 from grep_analyzer.classifiers.javascript_chaser import _BINDING as _JS_BINDING
 from grep_analyzer.classifiers.javascript_chaser import handle_binding as _handle_js
 from grep_analyzer.classifiers.ts_classifier import bindings_at_line
+from grep_analyzer.classifiers.base import node_text
 from grep_analyzer.model import dedup_symbols
 
 _BINDING = _JS_BINDING | {"public_field_definition", "enum_declaration"}
@@ -14,21 +15,21 @@ _BINDING = _JS_BINDING | {"public_field_definition", "enum_declaration"}
 def _handle_ts(node, consts, vars_, getters, setters):
     t = node.type
     if t == "public_field_definition":
-        is_readonly = any(not c.is_named and c.text.decode("utf-8", "replace") == "readonly"
+        is_readonly = any(not c.is_named and node_text(c) == "readonly"
                           for c in node.children)
         name = node.child_by_field_name("name")
         if name is not None and name.type == "property_identifier":
-            (consts if is_readonly else vars_).append(name.text.decode("utf-8", "replace"))
+            (consts if is_readonly else vars_).append(node_text(name))
     elif t == "enum_declaration":
         body = node.child_by_field_name("body")
         if body is not None:
             for ch in body.children:
                 if ch.type == "property_identifier":
-                    consts.append(ch.text.decode("utf-8", "replace"))
+                    consts.append(node_text(ch))
                 elif ch.type == "enum_assignment":
                     nm = ch.child_by_field_name("name")
                     if nm is not None:
-                        consts.append(nm.text.decode("utf-8", "replace"))
+                        consts.append(node_text(nm))
     else:
         _handle_js(node, consts, vars_, getters, setters)
 

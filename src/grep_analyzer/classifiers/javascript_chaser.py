@@ -3,6 +3,7 @@
 `handle_binding` / `_BINDING` は typescript_chaser と共有する。
 """
 from grep_analyzer.classifiers.ts_classifier import bindings_at_line
+from grep_analyzer.classifiers.base import node_text
 from grep_analyzer.model import dedup_symbols
 
 _BINDING = {"lexical_declaration", "variable_declaration",
@@ -13,11 +14,11 @@ _BINDING = {"lexical_declaration", "variable_declaration",
 def _names_from_pattern(node, out):
     t = node.type
     if t in ("identifier", "shorthand_property_identifier_pattern"):
-        out.append(node.text.decode("utf-8", "replace"))
+        out.append(node_text(node))
     elif t == "object_pattern":
         for ch in node.children:
             if ch.type == "shorthand_property_identifier_pattern":
-                out.append(ch.text.decode("utf-8", "replace"))
+                out.append(node_text(ch))
             elif ch.type == "pair_pattern":
                 val = ch.child_by_field_name("value")
                 if val is not None:
@@ -29,7 +30,7 @@ def _names_from_pattern(node, out):
             elif ch.type == "rest_pattern":
                 for c in ch.children:
                     if c.type == "identifier":
-                        out.append(c.text.decode("utf-8", "replace"))
+                        out.append(node_text(c))
     elif t == "assignment_pattern":
         left = node.child_by_field_name("left")
         if left is not None:
@@ -37,7 +38,7 @@ def _names_from_pattern(node, out):
     elif t == "array_pattern":
         for ch in node.children:
             if ch.type == "identifier":
-                out.append(ch.text.decode("utf-8", "replace"))
+                out.append(node_text(ch))
             elif ch.type in ("object_pattern", "array_pattern"):
                 _names_from_pattern(ch, out)
             elif ch.type == "assignment_pattern":
@@ -47,7 +48,7 @@ def _names_from_pattern(node, out):
             elif ch.type == "rest_pattern":
                 for c in ch.children:
                     if c.type == "identifier":
-                        out.append(c.text.decode("utf-8", "replace"))
+                        out.append(node_text(c))
 
 
 def _declarators(decl, is_const, consts, vars_):
@@ -63,7 +64,7 @@ def _declarators(decl, is_const, consts, vars_):
 def handle_binding(node, consts, vars_, getters, setters):
     t = node.type
     if t == "lexical_declaration":
-        is_const = any(not c.is_named and c.text.decode("utf-8", "replace") == "const"
+        is_const = any(not c.is_named and node_text(c) == "const"
                        for c in node.children)
         _declarators(node, is_const, consts, vars_)
     elif t == "variable_declaration":
@@ -71,20 +72,20 @@ def handle_binding(node, consts, vars_, getters, setters):
     elif t in ("assignment_expression", "augmented_assignment_expression"):
         left = node.child_by_field_name("left")
         if left is not None and left.type == "identifier":
-            vars_.append(left.text.decode("utf-8", "replace"))
+            vars_.append(node_text(left))
     elif t == "field_definition":
         prop = node.child_by_field_name("property")
         if prop is not None and prop.type in ("property_identifier", "private_property_identifier"):
-            vars_.append(prop.text.decode("utf-8", "replace"))
+            vars_.append(node_text(prop))
     elif t == "method_definition":
         kind = None
         for c in node.children:
-            if not c.is_named and c.text.decode("utf-8", "replace") in ("get", "set"):
-                kind = c.text.decode("utf-8", "replace")
+            if not c.is_named and node_text(c) in ("get", "set"):
+                kind = node_text(c)
                 break
         name = node.child_by_field_name("name")
         if kind and name is not None and name.type == "property_identifier":
-            (getters if kind == "get" else setters).append(name.text.decode("utf-8", "replace"))
+            (getters if kind == "get" else setters).append(node_text(name))
 
 
 def extract_tree(language, root, lineno):
