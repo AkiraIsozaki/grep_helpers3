@@ -256,17 +256,18 @@ _WORKER_FAST: bool = False
 def decode_cache_namespace(opts) -> str:
     """decode_cache の namespace を「復号結果を左右する設定」から決定的に導く（C1）。
 
-    永続キャッシュのキーは (namespace, realpath, mtime_ns, size)。mtime/size だけでは
-    ソース不変でも encoding_fallback / lang_map / fast を変えれば復号テキスト・言語判定が
-    変わるため、共有 --decode-cache-dir を run 跨ぎ再利用すると前 run の汚染復号が
-    ヒットしてしまう。これらの設定指紋を namespace に畳み込み、設定変更時は別アーティ
-    ファクトとして正しくミスさせる。fast/非fast の分離もここに集約する（旧 "fast"/"" 相当）。
+    永続キャッシュのキーは (namespace, realpath, mtime_ns, size)。キャッシュ値は
+    H2 以降 (text, enc, replaced) のみで、これは raw バイト＋fast＋encoding_fallback に
+    のみ依存する。mtime/size だけでは fast/fallback 変更時に汚染復号がヒットするため、
+    この 2 設定の指紋を namespace に畳み込んで設定変更時に正しくミスさせる。
+    lang_map は language/dialect 判定にしか効かず、それは hit 毎に relpath から再導出する
+    （キャッシュしない）ので namespace には含めない（含めると lang_map 変更で decode を
+    不要に全ミスさせる・Obs-B）。
     """
     fp = json.dumps(
         {
             "fast": bool(opts.fast_encoding),
             "fallback": list(opts.encoding_fallback),
-            "lang_map": sorted(opts.lang_map.items()),
         },
         ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha1(fp.encode("utf-8", "surrogatepass")).hexdigest()[:16]

@@ -139,8 +139,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"--input directory not found: {args.input}")
     if not Path(args.source_root).is_dir():
         parser.error(f"--source-root directory not found: {args.source_root}")
-    # --output が --input/--source-root と同一ディレクトリだと、finalize の孤児削除が
-    # {kw}.tsv/{kw}.part*.tsv を無条件 unlink するため既存ソース/入力を破壊し得る（H6）。
+    # --output が --input/--source-root と同一ディレクトリだと、finalize の TSV/manifest
+    # 書込や旧 manifest 由来の孤児パート削除が既存ソース/入力と衝突し破壊し得る（H6）。
     out_real = Path(args.output).resolve()
     if out_real == Path(args.source_root).resolve():
         parser.error("--output must not be the same directory as --source-root")
