@@ -42,14 +42,20 @@ class DecodeCache:
         self._approx_bytes = self._scan_total() if max_bytes is not None else 0
         self._sweep_stale_temp()
 
+    def _iter_artifacts(self):
+        """*.dca の (mtime_ns, size, path) を列挙する（stat 不可の項目は飛ばす）。"""
+        for p in self._dir.glob("*.dca"):
+            try:
+                stt = p.stat()
+            except OSError:
+                continue
+            yield stt.st_mtime_ns, stt.st_size, p
+
     def _scan_total(self) -> int:
         total = 0
         try:
-            for p in self._dir.glob("*.dca"):
-                try:
-                    total += p.stat().st_size
-                except OSError:
-                    pass
+            for _mt, size, _p in self._iter_artifacts():
+                total += size
         except OSError:
             pass
         return total
@@ -98,12 +104,12 @@ class DecodeCache:
         except OSError:
             pass
 
-    def get(self, abspath: str):
-        real = self._canon(abspath)
-        sig = self._file_sig(real)
-        if sig is None:
-            return None
-        path = self._artifact_path(real, sig)
+    def _read_header(self, path: Path):
+        """アーティファクトを読み (ヘッダ dict, 本文バイト) を返す。
+
+        読込不可は破棄せず None（単なる miss）。改行なし/非 JSON/非 dict の破損は
+        path を破棄して None（破損アーティファクトを正本にしない・L-2/H5）。
+        """
         try:
             with open(path, "rb") as f:
                 raw = f.read()
@@ -111,7 +117,7 @@ class DecodeCache:
             return None
         nl = raw.find(b"\n")
         if nl < 0:
-            self._discard(path)              # ヘッダ改行が無い＝破損（L-2）
+            self._discard(path)
             return None
         try:
             meta = json.loads(raw[:nl].decode("utf-8"))
@@ -120,15 +126,13 @@ class DecodeCache:
             return None
         if not isinstance(meta, dict):
             # valid JSON だが dict でない破損形（null/数値/配列/文字列）は、後段の
-            # meta.get(...) が AttributeError を投げる前に miss 降格する（H5・resume.py:21 と対称）。
+            # meta.get(...) が AttributeError を投げる前に弾く（resume.py:21 と対称）。
             self._discard(path)
             return None
-        body_bytes = raw[nl + 1:]
-        if meta.get("mtime_ns") != sig[0] or meta.get("size") != sig[1]:
-            return None                      # sha1 衝突保険（キー以外でも再検証）
-        if meta.get("blen") != len(body_bytes):
-            self._discard(path)              # truncated/torn write を trust しない（#8）
-            return None
+        return meta, raw[nl + 1:]
+
+    def _decode_body(self, path: Path, meta: dict, body_bytes: bytes):
+        """本文を UTF-8 復号し (body, enc, replaced) を返す。破損は破棄して None。"""
         try:
             body = body_bytes.decode("utf-8")
         except UnicodeDecodeError:
@@ -141,6 +145,23 @@ class DecodeCache:
         except KeyError:
             self._discard(path)
             return None
+
+    def get(self, abspath: str):
+        real = self._canon(abspath)
+        sig = self._file_sig(real)
+        if sig is None:
+            return None
+        path = self._artifact_path(real, sig)
+        parsed = self._read_header(path)
+        if parsed is None:
+            return None
+        meta, body_bytes = parsed
+        if meta.get("mtime_ns") != sig[0] or meta.get("size") != sig[1]:
+            return None                      # sha1 衝突保険（キー以外でも再検証）
+        if meta.get("blen") != len(body_bytes):
+            self._discard(path)              # truncated/torn write を trust しない（#8）
+            return None
+        return self._decode_body(path, meta, body_bytes)
 
     def put(self, abspath: str, meta, sig=None) -> None:
         # meta は (text, enc, replaced[, language, dialect])。language/dialect は
@@ -195,16 +216,8 @@ class DecodeCache:
         再走査して退避し、概算を実値へ同期し直す（amortize で put あたりは安価）。
         """
         try:
-            arts = []
-            total = 0
-            for p in self._dir.glob("*.dca"):
-                try:
-                    stt = p.stat()
-                except OSError:
-                    continue
-                arts.append((stt.st_mtime_ns, stt.st_size, p))
-                total += stt.st_size
-            arts.sort(key=lambda t: t[0])    # 古い mtime 先頭
+            arts = sorted(self._iter_artifacts(), key=lambda t: t[0])  # 古い mtime 先頭
+            total = sum(size for _mt, size, _p in arts)
             for _mt, size, p in arts:
                 if total <= self._max_bytes:
                     break

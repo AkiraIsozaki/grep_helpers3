@@ -130,11 +130,12 @@ def _build_opts(argv: list[str] | None = None) -> EngineOptions:
     return _opts_from(args)
 
 
-def main(argv: list[str] | None = None) -> int:
-    """引数をパースし direct＋不動点パイプラインを実行する。"""
-    parser = _make_parser()
-    args = parser.parse_args(argv)
-    # 出力に影響する入力を早期検証（静黙終了/異常挙動を防ぐ）。
+def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """出力に影響する入力を早期検証する（静黙終了/異常挙動を防ぐ）。
+
+    不正があれば parser.error で SystemExit する。全走査の前に倒すことで、
+    負値・degenerate な数値や不正コーデックが finalize 段で初めて顕在化するのを防ぐ。
+    """
     if not Path(args.input).is_dir():
         parser.error(f"--input directory not found: {args.input}")
     if not Path(args.source_root).is_dir():
@@ -197,6 +198,13 @@ def main(argv: list[str] | None = None) -> int:
             codecs.lookup(codec)
         except LookupError:
             parser.error(f"--encoding-fallback unknown codec: {codec!r}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    """引数をパースし direct＋不動点パイプラインを実行する。"""
+    parser = _make_parser()
+    args = parser.parse_args(argv)
+    _validate_args(parser, args)
     opts = _opts_from(args)
     return run(input_dir=Path(args.input), output_dir=Path(args.output),
                source_root=Path(args.source_root), opts=opts)
