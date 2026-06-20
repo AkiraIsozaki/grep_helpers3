@@ -6,7 +6,7 @@ chain_to を列挙して indirect Hit を生成する。seed と同じ (relpath,
 """
 
 from grep_analyzer.classify import classify_hit
-from grep_analyzer.fixedpoint._scan import file_meta, meta_cached, read_bytes_with_sig
+from grep_analyzer.fixedpoint._scan import file_meta, meta_via_decode_cache, read_bytes_with_sig
 from grep_analyzer.fixedpoint._state import ChaseState
 from grep_analyzer.model import Hit
 from grep_analyzer.provenance import Occurrence
@@ -52,7 +52,7 @@ def build_indirect_hits(state: ChaseState) -> list[Hit]:
             if c.relpath in state.rel_to_abs:
                 abspath = state.rel_to_abs[c.relpath]
                 raw, sig = read_bytes_with_sig(abspath)   # read 時 sig で put（L1）
-                text, enc, replaced, lang, dialect = meta_cached(
+                text, enc, replaced, lang, dialect = meta_via_decode_cache(
                     state.enc_memo, state.decode_cache, str(abspath), c.relpath, raw,
                     opts.lang_map, list(opts.encoding_fallback),
                     fast=opts.fast_encoding, sig=sig)

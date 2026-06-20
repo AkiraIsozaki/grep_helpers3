@@ -52,6 +52,13 @@ def maybe_spill(state: ChaseState, hop: int):
             state.spill_logged = True
 
 
+def _union_load(states):
+    """union 予算判定に使う state 横断集計 (n_intro, in_memory_len) を返す。"""
+    n_intro = sum(sum(len(v) for v in st.introducers.values()) for st in states)
+    in_memory_len = sum(st.edge_store.in_memory_len() for st in states)
+    return n_intro, in_memory_len
+
+
 def compute_nchunks_union(states, union_symbols, *, opts, budget) -> int:
     """lock-step 共有エンジンの union 予算版 nchunks を返す。
 
@@ -68,8 +75,7 @@ def compute_nchunks_union(states, union_symbols, *, opts, budget) -> int:
         return min(opts.force_chunks, opts.max_passes, max(1, len(union_symbols)))
     if budget.unlimited:
         return 1
-    n_intro = sum(sum(len(v) for v in st.introducers.values()) for st in states)
-    in_memory_len = sum(st.edge_store.in_memory_len() for st in states)
+    n_intro, in_memory_len = _union_load(states)
     n_live = len(union_symbols)
     if not budget.exceeded(_budget.estimate_items(
             n_symbols=n_live, n_edges=in_memory_len, n_intro=n_intro)):
@@ -91,8 +97,7 @@ def degrade_insufficient(union_symbols, nchunks, *, opts, budget, states) -> boo
     """
     if budget.unlimited or nchunks < opts.max_passes:
         return False
-    n_intro = sum(sum(len(v) for v in st.introducers.values()) for st in states)
-    in_memory_len = sum(st.edge_store.in_memory_len() for st in states)
+    n_intro, in_memory_len = _union_load(states)
     per_chunk = -(-len(union_symbols) // max(1, nchunks))
     return budget.exceeded(_budget.estimate_items(
         n_symbols=per_chunk, n_edges=in_memory_len, n_intro=n_intro))

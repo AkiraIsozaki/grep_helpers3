@@ -12,6 +12,6 @@ def test_meta_cachedはdecode_cacheにhitすれば再decodeしない(tmp_path, m
     real = _scan.decode_bytes
     monkeypatch.setattr(_scan, "decode_bytes",
                         lambda d, c: (calls.__setitem__("n", calls["n"] + 1), real(d, c))[1])
-    got = _scan.meta_cached(None, dc, str(src), "a.c", src.read_bytes(), {}, ["cp932"])
+    got = _scan.meta_via_decode_cache(None, dc, str(src), "a.c", src.read_bytes(), {}, ["cp932"])
     assert got == meta
     assert calls["n"] == 0

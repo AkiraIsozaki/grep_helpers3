@@ -17,6 +17,18 @@ import tempfile
 from collections import OrderedDict
 from pathlib import Path
 
+from grep_analyzer import automaton
+from grep_analyzer.chase import extract_chase_symbols_from_root
+from grep_analyzer.classifiers import _AST_CHASERS
+from grep_analyzer.classifiers.ts_classifier import parse_tree
+from grep_analyzer.dispatch import LANG_SAMPLE_BYTES, detect_language, detect_shell_dialect
+from grep_analyzer.embed_preprocess import inline_template_spans
+from grep_analyzer.encoding import DEFAULT_FALLBACK, decode_bytes, decode_with_memo
+from grep_analyzer.decode_cache import DecodeCache
+from grep_analyzer.fixedpoint._encmemo import EncMemo
+from grep_analyzer.fixedpoint._encmemo import _DEFAULT_MAX as _ENC_MEMO_MAX
+from grep_analyzer.model import ChaseSymbols
+
 
 def read_bytes_with_sig(path):
     """bytes と (mtime_ns, size) を同一 fd の fstat で一貫取得する（L1）。
@@ -29,18 +41,6 @@ def read_bytes_with_sig(path):
         raw = f.read()
         st = os.fstat(f.fileno())
     return raw, (st.st_mtime_ns, st.st_size)
-
-from grep_analyzer import automaton
-from grep_analyzer.chase import extract_chase_symbols_from_root
-from grep_analyzer.classifiers import _AST_CHASERS
-from grep_analyzer.classifiers.ts_classifier import parse_tree
-from grep_analyzer.dispatch import LANG_SAMPLE_BYTES, detect_language, detect_shell_dialect
-from grep_analyzer.embed_preprocess import inline_template_spans
-from grep_analyzer.encoding import DEFAULT_FALLBACK, decode_bytes, decode_with_memo
-from grep_analyzer.decode_cache import DecodeCache
-from grep_analyzer.fixedpoint._encmemo import EncMemo
-from grep_analyzer.fixedpoint._encmemo import _DEFAULT_MAX as _ENC_MEMO_MAX
-from grep_analyzer.model import ChaseSymbols
 
 
 def _meta_from_text(relpath, text, enc, replaced, lang_map):
@@ -55,6 +55,15 @@ def _meta_from_text(relpath, text, enc, replaced, lang_map):
     language = detect_language(relpath, sample, lang_map)
     dialect = detect_shell_dialect(relpath, sample) if language == "shell" else "bourne"
     return text, enc, replaced, language, dialect
+
+
+def _meta_from_decode_hit(dhit, relpath, lang_map):
+    """decode_cache hit (text,enc,replaced) から 5-tuple を再構成する。
+
+    language/dialect は relpath 由来なのでキャッシュ本文から毎回再導出する（H2）。
+    """
+    text, enc, replaced = dhit
+    return _meta_from_text(relpath, text, enc, replaced, lang_map)
 
 
 def file_meta(relpath: str, raw: bytes, lang_map: dict[str, str], fallback_chain=None,
@@ -75,8 +84,8 @@ def meta_via_memo(enc_memo, key, relpath, raw, lang_map, fallback, fast: bool = 
     return _meta_from_text(relpath, text, enc, replaced, lang_map)
 
 
-def meta_cached(enc_memo, decode_cache, key, relpath, raw, lang_map, fallback,
-                fast: bool = False, sig=None):
+def meta_via_decode_cache(enc_memo, decode_cache, key, relpath, raw, lang_map,
+                          fallback, fast: bool = False, sig=None):
     """decode_cache hit を優先し、miss は meta_via_memo/file_meta と同一結果を put して返す。
 
     seed/finalize の直呼び decode を hop 走査と同じ永続層に乗せる。出力は同値である。
@@ -89,9 +98,7 @@ def meta_cached(enc_memo, decode_cache, key, relpath, raw, lang_map, fallback,
     if decode_cache is not None:
         dhit = decode_cache.get(key)
         if dhit is not None:
-            # language/dialect は relpath 由来なのでキャッシュ本文から毎回再導出する（H2）。
-            text, enc, replaced = dhit
-            return _meta_from_text(relpath, text, enc, replaced, lang_map)
+            return _meta_from_decode_hit(dhit, relpath, lang_map)
     if enc_memo is not None:
         meta = meta_via_memo(enc_memo, key, relpath, raw, lang_map, fallback, fast=fast)
     else:
@@ -157,9 +164,7 @@ def _read_meta(relpath, abspath, lang_map, fallback, cache, enc_memo=None,
     if decode_cache is not None:
         dhit = decode_cache.get(abspath)
         if dhit is not None:
-            # language/dialect は relpath 由来なのでキャッシュ本文から毎回再導出する（H2）。
-            text, enc, replaced = dhit
-            meta = _meta_from_text(relpath, text, enc, replaced, lang_map)
+            meta = _meta_from_decode_hit(dhit, relpath, lang_map)
             if cache is not None:
                 cache.put(abspath, meta)
             return meta

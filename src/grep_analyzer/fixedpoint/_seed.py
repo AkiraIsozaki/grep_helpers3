@@ -18,7 +18,7 @@ from grep_analyzer.diagnostics import Diagnostics
 from grep_analyzer.embed_preprocess import effective_language
 from grep_analyzer.fixedpoint._ingest import ingest_one
 from grep_analyzer.fixedpoint._options import EngineOptions
-from grep_analyzer.fixedpoint._scan import kinds_of, meta_cached, read_bytes_with_sig
+from grep_analyzer.fixedpoint._scan import kinds_of, meta_via_decode_cache, read_bytes_with_sig
 from grep_analyzer.fixedpoint._state import ChaseState
 from grep_analyzer.model import ChaseSymbols, Hit
 from grep_analyzer.provenance import Occurrence, ProvenanceGraph
@@ -63,7 +63,7 @@ def initialize_state(seed_hits: list[Hit], source_root: Path,
         if is_contained_relpath(s.file) and sp.is_file() and is_within_root(source_root, sp):
             if s.file != cur_relpath:
                 raw, sig = read_bytes_with_sig(sp)   # read 時 sig で put（L1）
-                cur_text, _, _, cur_lang, cur_dialect = meta_cached(
+                cur_text, _, _, cur_lang, cur_dialect = meta_via_decode_cache(
                     enc_memo, decode_cache, str(sp), s.file, raw,
                     opts.lang_map, list(opts.encoding_fallback),
                     fast=opts.fast_encoding, sig=sig)

@@ -5,7 +5,7 @@ import os
 
 from grep_analyzer.decode_cache import DecodeCache
 from grep_analyzer.fixedpoint._encmemo import EncMemo
-from grep_analyzer.fixedpoint._scan import meta_cached
+from grep_analyzer.fixedpoint._scan import meta_via_decode_cache
 
 _FB = ["cp932", "euc-jp", "latin-1"]
 
@@ -18,13 +18,13 @@ def test_realpath共有でも言語はrelpathごとに導出される(tmp_path):
     cache = DecodeCache(tmp_path / "cache")
     enc = EncMemo()
 
-    t1, _, _, l1, _ = meta_cached(enc, cache, str(real), "real.py",
+    t1, _, _, l1, _ = meta_via_decode_cache(enc, cache, str(real), "real.py",
                                   real.read_bytes(), {}, _FB)
     assert l1 == "python"
 
     # 同一 realpath を .c 経由で参照しても language は relpath（.c）由来でなければならない。
     # 旧実装はキャッシュ済の python をそのまま返していた。
-    t2, _, _, l2, _ = meta_cached(enc, cache, str(link), "link.c",
+    t2, _, _, l2, _ = meta_via_decode_cache(enc, cache, str(link), "link.c",
                                   link.read_bytes(), {}, _FB)
     assert l2 == "c"
     assert t2 == "x = 1\n"

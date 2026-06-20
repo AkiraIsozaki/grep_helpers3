@@ -93,7 +93,7 @@ def run(
         # キーは str(abspath)（未正規化）だが memo は純粋なのでキー差異は性能劣化に留まり出力不変。
         enc_memo = EncMemo()
         from grep_analyzer.fixedpoint._scan import (
-            make_decode_cache, meta_cached, read_bytes_with_sig)
+            make_decode_cache, meta_via_decode_cache, read_bytes_with_sig)
         # namespace は decode_cache_namespace(opts) が fast/fallback/lang_map を畳み込む（C1）。
         decode_cache = make_decode_cache(opts)
 
@@ -148,7 +148,7 @@ def run(
                     target = Path(source_root) / relpath
                     if is_contained_relpath(relpath) and target.is_file() and is_within_root(source_root, target):
                         # direct も seed/scan/finalize と同じ永続デコードキャッシュ経路
-                        # （meta_cached）を通す。decode/言語判定を hop・worker・run をまたいで
+                        # （meta_via_decode_cache）を通す。decode/言語判定を hop・worker・run をまたいで
                         # ファイルにつき 1 回に固定する（#1: 旧 direct は cache 非経由で
                         # 同一 run 内に seed と二重 decode していた）。language/dialect は
                         # _meta_from_text が LANG_SAMPLE_BYTES 窓で確定し scan/indirect と同値。
@@ -160,7 +160,7 @@ def run(
                             # 落とさず欠落扱い（missing_source）へ降格する（L3）。
                             cur_ctx = None
                         else:
-                            file_text, enc, replaced, language, dialect = meta_cached(
+                            file_text, enc, replaced, language, dialect = meta_via_decode_cache(
                                 enc_memo, decode_cache, str(target), relpath,
                                 raw, lang_map, fb, fast=opts.fast_encoding, sig=sig)
                             sample = file_text[:LANG_SAMPLE_BYTES]
