@@ -11,5 +11,7 @@ SQL_CLAUSE_RE = re.compile(
 
 SH_TERMINATOR_RE = re.compile(r"(?:^|\s)(fi|done|esac|breaksw)\b|;")
 
-PERL_TERMINATOR_RE = re.compile(r";|}|^\s*sub\b", re.IGNORECASE)
-GROOVY_TERMINATOR_RE = re.compile(r";|}|^\s*(?:class|def)\b", re.IGNORECASE)
+# sub/class/def は小文字のみが宣言キーワード。IGNORECASE を外し、大文字バレワード
+# （SUB/CLASS/DEF 等の定数・ラベル）を終端と誤判定して境界を早期に切るのを防ぐ。
+PERL_TERMINATOR_RE = re.compile(r";|}|^\s*sub\b")
+GROOVY_TERMINATOR_RE = re.compile(r";|}|^\s*(?:class|def)\b")

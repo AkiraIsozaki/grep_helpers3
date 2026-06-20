@@ -37,3 +37,17 @@ def test_groovyのsnippetは波括弧で境界を取る():
     assert "def x = compute()" in out
     # heuristic が機能すれば上方向の def run() { も取り込まれる
     assert "def run()" in out
+
+
+def test_perlの大文字SUBは終端と誤判定しない():
+    # 小文字 sub のみが Perl の宣言キーワード。大文字 SUB（定数/バレワード）を
+    # 終端扱いすると snippet 境界を早期に誤って切る。case-sensitive 化で false-positive を解消。
+    lines = ["my $a = 1", "SUB foo bar", "my $b = 2"]
+    s, _ = H.heuristic_span(lines, 2, "perl")
+    assert s == 0   # SUB 行(index1)で止まらず先頭まで遡る
+
+
+def test_groovyの大文字DEF_CLASSは終端と誤判定しない():
+    lines = ["int a = 1", "DEF foo bar", "int b = 2"]
+    s, _ = H.heuristic_span(lines, 2, "groovy")
+    assert s == 0
