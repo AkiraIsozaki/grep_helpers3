@@ -69,21 +69,28 @@ class ProvenanceGraph:
         return results
 
     def _iter_dfs(self, seed, target, max_depth, limit, diag, results) -> None:
-        """前順再帰 DFS を明示スタックで反復化（制御フロー・診断順を厳密保持）。
+        """前順再帰 DFS を明示スタックで反復化する（制御フロー・診断順を厳密保持）。
 
         各フレーム = (node, path, visited_occ, visited_sym, neighbor_iter)。
-        フレーム push 時に node 到達処理（target / max_depth 判定）を一度だけ行い、
-        以後は neighbor_iter を 1 つずつ進めて for ループ 1 反復に対応させる。
-        これにより cut 診断と子孫探索の interleave が再帰版と同順になる。
+        _visit が前順の到達処理（target 収集 / max_depth cut 診断）を担い、seed と
+        各子で同一に呼ぶことで、cut 診断と子孫探索の interleave が再帰版と同順になる。
         """
         if len(results) >= limit:
             return
-        # seed フレームの到達処理（_dfs 冒頭の target / max_depth 判定に対応）。
-        if seed == target:
-            results.append(_hop(seed))
-            return
-        if 0 >= max_depth:                       # len(path)-1 == 0
-            diag.add("prov_max_depth", _hop(seed) + " ... " + _hop(seed))
+
+        def _visit(path) -> bool:
+            """末端 occ の前順到達処理。target なら results へ収集し、深さ超過なら
+            cut 診断を出す。子孫を展開してよいとき True を返す（descend）。"""
+            occ = path[-1]
+            if occ == target:
+                results.append(" -> ".join(_hop(o) for o in path))
+                return False
+            if len(path) - 1 >= max_depth:
+                diag.add("prov_max_depth", _hop(path[0]) + " ... " + _hop(occ))
+                return False
+            return True
+
+        if not _visit((seed,)):
             return
         stack = [(seed, (seed,), frozenset({seed}), frozenset(),
                   iter(self._adj.get(seed, [])))]
@@ -98,14 +105,8 @@ class ProvenanceGraph:
             if next_occ in vocc or next_occ.symbol in vsym:
                 diag.add("prov_cycle_cut", _hop(node) + " -> " + _hop(next_occ))
                 continue
-            # 子フレームを push する前に、_dfs 冒頭の到達処理を子に対して実行する。
             child_path = path + (next_occ,)
-            if next_occ == target:
-                results.append(" -> ".join(_hop(o) for o in child_path))
-                continue
-            if len(child_path) - 1 >= max_depth:
-                diag.add("prov_max_depth",
-                         _hop(child_path[0]) + " ... " + _hop(next_occ))
+            if not _visit(child_path):
                 continue
             stack.append((next_occ, child_path, vocc | {next_occ},
                           vsym | {next_occ.symbol},

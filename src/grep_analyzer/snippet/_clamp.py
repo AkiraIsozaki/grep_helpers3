@@ -54,12 +54,19 @@ def _render(rows: list[str], top_k: int, bot_k: int) -> str:
     return body
 
 
+def _line_count(lo: int, hi: int) -> int:
+    """閉区間 [lo, hi] に含まれる行数を返す（hi < lo なら 0）。"""
+    return hi - lo + 1 if hi >= lo else 0
+
+
 def clamp_lines(lines: list[str], hit: int, line_max: int = LINE_MAX,
                 char_max: int = CHAR_MAX) -> str:
     """選択範囲 lines をヒット中心に縮約して返す。
 
     hit は lines 内の 0 始まり index。
     サニタイズ・区切り衝突エスケープは呼び出し側（build_snippet）の責務。
+    up_idx/down_idx は「次に取り込む候補行」。省略行数は未取込側の閉区間
+    （上=[span_start, up_idx]、下=[down_idx, span_end]）の行数で表す。
     """
     span_start, span_end = 0, len(lines) - 1
     hit_text = lines[hit]
@@ -71,20 +78,20 @@ def clamp_lines(lines: list[str], hit: int, line_max: int = LINE_MAX,
         progressed = False
         if up_idx >= span_start:
             cand = [lines[up_idx]] + out
-            above_count = (up_idx - 1) - span_start + 1 if (up_idx - 1) >= span_start else 0
-            below_count = span_end - down_idx + 1 if down_idx <= span_end else 0
-            if len(cand) <= line_max and len(_render(cand, above_count, below_count)) <= char_max:
+            above = _line_count(span_start, up_idx - 1)   # up_idx 取込後に残る上行
+            below = _line_count(down_idx, span_end)
+            if len(cand) <= line_max and len(_render(cand, above, below)) <= char_max:
                 out, up_idx, progressed = cand, up_idx - 1, True
         if len(out) >= line_max:
             break
         if down_idx <= span_end:
             cand = out + [lines[down_idx]]
-            above_count = up_idx - span_start + 1 if up_idx >= span_start else 0
-            below_count = span_end - (down_idx + 1) + 1 if (down_idx + 1) <= span_end else 0
-            if len(cand) <= line_max and len(_render(cand, above_count, below_count)) <= char_max:
+            above = _line_count(span_start, up_idx)
+            below = _line_count(down_idx + 1, span_end)   # down_idx 取込後に残る下行
+            if len(cand) <= line_max and len(_render(cand, above, below)) <= char_max:
                 out, down_idx, progressed = cand, down_idx + 1, True
         if not progressed:
             break
-    top_k = up_idx - span_start + 1 if up_idx >= span_start else 0
-    bot_k = span_end - down_idx + 1 if down_idx <= span_end else 0
+    top_k = _line_count(span_start, up_idx)
+    bot_k = _line_count(down_idx, span_end)
     return _render(out, top_k, bot_k)

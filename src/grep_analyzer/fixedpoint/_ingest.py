@@ -35,30 +35,23 @@ def ingest_one(state: ChaseState, parent: Occurrence, language: str,
     part = partition(chase_symbols, language, state.policy)
     for symbol, reason in sorted(part.rejected):
         diag.add("symbol_rejected", f"{reason}\t{symbol}")
-    for symbol in part.chase:
-        if symbol in state.capped:
-            continue
-        if not is_seed and symbol == parent.symbol:
-            continue
-        state.symbol_kind.setdefault(symbol, kinds.get(symbol, "var"))
-        state.symbol_hop.setdefault(symbol, hop)
-        lst = state.introducers.setdefault(symbol, [])
-        if parent not in lst:
-            lst.append(parent)
-        if symbol not in state.chase_done:
-            state.chase_active.add(symbol)
-    for symbol in part.terminal:
-        if symbol in state.capped:
-            continue
-        if not is_seed and symbol == parent.symbol:
-            continue
-        state.symbol_kind.setdefault(symbol, kinds.get(symbol, "getter"))
-        state.symbol_hop.setdefault(symbol, hop)
-        lst = state.introducers.setdefault(symbol, [])
-        if parent not in lst:
-            lst.append(parent)
-        if symbol not in state.terminal_done:
-            state.terminal_active.add(symbol)
+    # chase（既定 kind=var）と terminal（getter）は同じ受け入れ処理で、振り分け先の
+    # active/done 集合と既定 kind だけが異なる。chase を先に処理する順序は保つ。
+    for symbols, default_kind, active, done in (
+            (part.chase, "var", state.chase_active, state.chase_done),
+            (part.terminal, "getter", state.terminal_active, state.terminal_done)):
+        for symbol in symbols:
+            if symbol in state.capped:
+                continue
+            if not is_seed and symbol == parent.symbol:
+                continue
+            state.symbol_kind.setdefault(symbol, kinds.get(symbol, default_kind))
+            state.symbol_hop.setdefault(symbol, hop)
+            lst = state.introducers.setdefault(symbol, [])
+            if parent not in lst:
+                lst.append(parent)
+            if symbol not in done:
+                active.add(symbol)
 
 
 def absorb_results(state: ChaseState, pass_results, scan_chase: set[str],
