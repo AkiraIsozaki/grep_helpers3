@@ -45,6 +45,87 @@ def _effective_use_ripgrep(explicit: bool | None, total_bytes: int, threshold: i
     return ripgrep.available() and total_bytes >= threshold
 
 
+def _direct_hits_for_keyword(keyword, lines, grep_name, grep_enc, source_root,
+                             opts, enc_memo, decode_cache, fb, lang_map, kw_diag):
+    """1 keyword の grep 行から direct Hit のリストを構築する。
+
+    grep 出力はファイル単位でヒットがまとまる（grep -rn / rg）。直前 1 ファイル分の
+    読込・復号・言語判定・パース木を cur_ctx にキャッシュし、同一ファイルの連続ヒットで
+    ディスク再読込と tree-sitter 再パースを抑止する（追加メモリ O(1)＝1 ファイル分）。
+    `cur_ctx is None ⇔ 現 relpath は非ファイル` を構造的不変条件にする（別フラグとの
+    手動同期を排し、欠落診断の取りこぼしを防ぐ）。診断（decode_replaced/
+    unsupported_shebang/missing_source）は件数・順序を保つためヒット行ごとに発火する。
+    """
+    from grep_analyzer.fixedpoint._scan import meta_via_decode_cache, read_bytes_with_sig
+    hits: list[Hit] = []
+    cur_relpath = None
+    cur_ctx: tuple | None = None
+    for raw_line in lines:
+        parsed = parse_grep_line(raw_line)
+        if parsed is None:
+            kw_diag.add("bad_grep_line", f"{grep_name}: {raw_line!r}")
+            continue
+        path_bytes, lineno, content_bytes = parsed
+        # パスは生バイト由来＝os.fsdecode（FS codec＋surrogateescape）で FS と一致。
+        # walk.py の relpath 表現とも統一され、SJIS 混在名でも is_file が当たる。
+        relpath = os.fsdecode(path_bytes)
+        content = content_bytes.decode(grep_enc, errors="replace")
+        if relpath != cur_relpath:
+            cur_relpath = relpath
+            target = Path(source_root) / relpath
+            if is_contained_relpath(relpath) and target.is_file() and is_within_root(source_root, target):
+                # direct も seed/scan/finalize と同じ永続デコードキャッシュ経路
+                # （meta_via_decode_cache）を通す。decode/言語判定を hop・worker・run をまたいで
+                # ファイルにつき 1 回に固定する（#1: 旧 direct は cache 非経由で
+                # 同一 run 内に seed と二重 decode していた）。language/dialect は
+                # _meta_from_text が LANG_SAMPLE_BYTES 窓で確定し scan/indirect と同値。
+                try:
+                    # bytes と read 時 sig を同一 fd で取得（put の stale 化を防ぐ・L1）。
+                    raw, sig = read_bytes_with_sig(target)
+                except OSError:
+                    # is_file 後の TOCTOU（消失/権限変化）。seed/scan と同じく run を
+                    # 落とさず欠落扱い（missing_source）へ降格する（L3）。
+                    cur_ctx = None
+                else:
+                    file_text, enc, replaced, language, dialect = meta_via_decode_cache(
+                        enc_memo, decode_cache, str(target), relpath,
+                        raw, lang_map, fb, fast=opts.fast_encoding, sig=sig)
+                    sample = file_text[:LANG_SAMPLE_BYTES]
+                    unsupported = (
+                        not extension_resolves_language(relpath, lang_map)
+                        and shebang_dialect(sample) is not None  # シェバン行が存在
+                        and shebang_language(sample) is None      # 対応言語に解決しない
+                    )
+                    cur_ctx = (file_text, enc, replaced, language, dialect,
+                               unsupported, {}, _physical_lines(file_text))
+            else:
+                cur_ctx = None
+        if cur_ctx is None:
+            # パスは sanitize_field を通す。Unix パスは TAB/CR を含み得るが、
+            # diagnostics の detail 行は `{category}\t{message}` 形式なので生 TAB/CR が
+            # 列・行構造を壊す（TSV の file 列と同じ規約に揃える・M2）。
+            kw_diag.add("missing_source", sanitize_field(relpath))
+            continue
+        (file_text, enc, replaced, language, dialect,
+         unsupported, tree_cache, phys_lines) = cur_ctx
+        if replaced:
+            kw_diag.add("decode_replaced", sanitize_field(str(relpath)))
+        if unsupported:
+            kw_diag.add("unsupported_shebang", sanitize_field(str(relpath)))
+        category, confidence = classify_hit(
+            language, dialect, file_text, lineno, content, cache=tree_cache)
+        hits.append(Hit(
+            keyword=keyword, language=language, file=relpath, lineno=lineno,
+            ref_kind="direct", category=category, category_sub="",
+            usage_summary=f"{category} ({language})", via_symbol="",
+            chain=f"{keyword}@{relpath}:{lineno}",
+            snippet=build_snippet(language, dialect, file_text, lineno,
+                                  cache=tree_cache, lines=phys_lines),
+            encoding=enc + (" 要確認" if replaced else ""), confidence=confidence,
+        ))
+    return hits
+
+
 def run(
     input_dir: Path, output_dir: Path, source_root: Path,
     opts: EngineOptions | None = None,
@@ -92,8 +173,7 @@ def run(
         # （jobs>1 の並列 SCAN は process-local の _WORKER_ENC を使い fork 越しに共有不可）。
         # キーは str(abspath)（未正規化）だが memo は純粋なのでキー差異は性能劣化に留まり出力不変。
         enc_memo = EncMemo()
-        from grep_analyzer.fixedpoint._scan import (
-            make_decode_cache, meta_via_decode_cache, read_bytes_with_sig)
+        from grep_analyzer.fixedpoint._scan import make_decode_cache
         # namespace は decode_cache_namespace(opts) が fast/fallback/lang_map を畳み込む（C1）。
         decode_cache = make_decode_cache(opts)
 
@@ -118,85 +198,12 @@ def run(
             # content 復号用にファイル単位で文字コードを 1 回だけ判定（chardet 1回・行間一貫）。
             # パスは生バイトのまま os.fsdecode するため、ここでは encoding のみ使う。
             _, grep_enc, _ = decode_bytes(grep_bytes, fb, fast=opts.fast_encoding)
-            hits: list[Hit] = []
-
             lines = grep_bytes.split(b"\n")
             if lines and lines[-1] == b"":
                 lines.pop()                       # 末尾改行による空要素（splitlines 相当）
-            # grep 出力はファイル単位でヒットがまとまる（grep -rn / rg）。直前 1 ファイル分の
-            # 読込・復号・言語判定・パース木をキャッシュし、同一ファイルの連続ヒットで
-            # ディスク再読込と tree-sitter 再パースを抑止する（追加メモリ O(1)＝1 ファイル分）。
-            # 診断（decode_replaced/unsupported_shebang/missing_source）は件数・順序を
-            # 保つためヒット行ごとに発火する。
-            # cur_ctx は relpath 単位のキャッシュ。欠落ファイルでは None を入れることで
-            # 「cur_ctx is None ⇔ 現 relpath は非ファイル」を構造的不変条件にする
-            # （別フラグとの手動同期を排し、欠落診断の取りこぼしを防ぐ）。
-            cur_relpath = None
-            cur_ctx: tuple | None = None
-            for raw_line in lines:
-                parsed = parse_grep_line(raw_line)
-                if parsed is None:
-                    kw_diag.add("bad_grep_line", f"{grep_file.name}: {raw_line!r}")
-                    continue
-                path_bytes, lineno, content_bytes = parsed
-                # パスは生バイト由来＝os.fsdecode（FS codec＋surrogateescape）で FS と一致。
-                # walk.py の relpath 表現とも統一され、SJIS 混在名でも is_file が当たる。
-                relpath = os.fsdecode(path_bytes)
-                content = content_bytes.decode(grep_enc, errors="replace")
-                if relpath != cur_relpath:
-                    cur_relpath = relpath
-                    target = Path(source_root) / relpath
-                    if is_contained_relpath(relpath) and target.is_file() and is_within_root(source_root, target):
-                        # direct も seed/scan/finalize と同じ永続デコードキャッシュ経路
-                        # （meta_via_decode_cache）を通す。decode/言語判定を hop・worker・run をまたいで
-                        # ファイルにつき 1 回に固定する（#1: 旧 direct は cache 非経由で
-                        # 同一 run 内に seed と二重 decode していた）。language/dialect は
-                        # _meta_from_text が LANG_SAMPLE_BYTES 窓で確定し scan/indirect と同値。
-                        try:
-                            # bytes と read 時 sig を同一 fd で取得（put の stale 化を防ぐ・L1）。
-                            raw, sig = read_bytes_with_sig(target)
-                        except OSError:
-                            # is_file 後の TOCTOU（消失/権限変化）。seed/scan と同じく run を
-                            # 落とさず欠落扱い（missing_source）へ降格する（L3）。
-                            cur_ctx = None
-                        else:
-                            file_text, enc, replaced, language, dialect = meta_via_decode_cache(
-                                enc_memo, decode_cache, str(target), relpath,
-                                raw, lang_map, fb, fast=opts.fast_encoding, sig=sig)
-                            sample = file_text[:LANG_SAMPLE_BYTES]
-                            unsupported = (
-                                not extension_resolves_language(relpath, lang_map)
-                                and shebang_dialect(sample) is not None  # シェバン行が存在
-                                and shebang_language(sample) is None      # 対応言語に解決しない
-                            )
-                            cur_ctx = (file_text, enc, replaced, language, dialect,
-                                       unsupported, {}, _physical_lines(file_text))
-                    else:
-                        cur_ctx = None
-                if cur_ctx is None:
-                    # パスは sanitize_field を通す。Unix パスは TAB/CR を含み得るが、
-                    # diagnostics の detail 行は `{category}\t{message}` 形式なので生 TAB/CR が
-                    # 列・行構造を壊す（TSV の file 列と同じ規約に揃える・M2）。
-                    kw_diag.add("missing_source", sanitize_field(relpath))
-                    continue
-                (file_text, enc, replaced, language, dialect,
-                 unsupported, tree_cache, phys_lines) = cur_ctx
-                if replaced:
-                    kw_diag.add("decode_replaced", sanitize_field(str(relpath)))
-                if unsupported:
-                    kw_diag.add("unsupported_shebang", sanitize_field(str(relpath)))
-                category, confidence = classify_hit(
-                    language, dialect, file_text, lineno, content, cache=tree_cache)
-                hits.append(Hit(
-                    keyword=keyword, language=language, file=relpath, lineno=lineno,
-                    ref_kind="direct", category=category, category_sub="",
-                    usage_summary=f"{category} ({language})", via_symbol="",
-                    chain=f"{keyword}@{relpath}:{lineno}",
-                    snippet=build_snippet(language, dialect, file_text, lineno,
-                                          cache=tree_cache, lines=phys_lines),
-                    encoding=enc + (" 要確認" if replaced else ""), confidence=confidence,
-                ))
-            direct_hits[keyword] = hits
+            direct_hits[keyword] = _direct_hits_for_keyword(
+                keyword, lines, grep_file.name, grep_enc, source_root, opts,
+                enc_memo, decode_cache, fb, lang_map, kw_diag)
 
         # --- 3. states 構築（同一 keyword ソート順・keyword 別 indirect_diag） ---
         indirect_diag: dict[str, Diagnostics] = {}
