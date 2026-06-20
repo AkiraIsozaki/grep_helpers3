@@ -72,18 +72,18 @@ def run(
         # --- 1. walk + 実効 use_ripgrep 解決（walk 由来診断は walk_diag に集約） ---
         walk_diag = Diagnostics()
         # collect_files_ex: 64KiB NUL prefix（_is_binary と同一窓・#I 統一）＋ total_bytes/unsafe_rels を prefilter 判定に利用する
-        def _walk_cb(n):
-            print(f"[grep_analyzer] walking {n} files...", file=sys.stderr, flush=True)
+        def _walk_cb(count):
+            print(f"[grep_analyzer] walking {count} files...", file=sys.stderr, flush=True)
         files, total_bytes, unsafe_rels = collect_files_ex(
             Path(source_root), include=opts.include, exclude=opts.exclude,
             follow_symlinks=opts.follow_symlinks,
             max_file_bytes=opts.max_file_bytes, diag=walk_diag,
             on_progress=_walk_cb if opts.progress == "on" else None)
-        explicit = opts.use_ripgrep
-        effective = _effective_use_ripgrep(
-            explicit, total_bytes, opts.ripgrep_threshold_bytes)
-        opts = replace(opts, use_ripgrep=effective)
-        if explicit is None and effective:
+        use_rg_override = opts.use_ripgrep
+        use_rg = _effective_use_ripgrep(
+            use_rg_override, total_bytes, opts.ripgrep_threshold_bytes)
+        opts = replace(opts, use_ripgrep=use_rg)
+        if use_rg_override is None and use_rg:
             walk_diag.add("prefilter_auto_engaged",
                           f"total_bytes={total_bytes} threshold={opts.ripgrep_threshold_bytes}")
 

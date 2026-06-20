@@ -29,6 +29,11 @@ MASK_PATTERNS: dict[str, re.Pattern[str]] = {
 }
 
 
+def blank_keep_newlines(text: str) -> str:
+    """改行を保ち他の文字を空白へ置換する（長さ保存）。"""
+    return "".join("\n" if c == "\n" else " " for c in text)
+
+
 def blank_spans(pattern: re.Pattern[str], text: str) -> str:
     """pattern のマッチ全体を同字数空白へ置換する（行番号・桁を保つ）。"""
     return pattern.sub(lambda m: " " * len(m.group(0)), text)

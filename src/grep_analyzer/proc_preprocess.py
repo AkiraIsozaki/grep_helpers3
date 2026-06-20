@@ -5,7 +5,7 @@
 
 import re
 
-from grep_analyzer.patterns.literal_masking import MASK_PATTERNS
+from grep_analyzer.patterns.literal_masking import MASK_PATTERNS, blank_keep_newlines
 
 # `EXEC SQL ... ;` / `EXEC SQL ... END-EXEC` / `EXEC ORACLE ... ;` を行跨ぎで捕捉する
 _EXEC_RE = re.compile(
@@ -19,8 +19,7 @@ _PROC_LIT_RE = MASK_PATTERNS["proc"]
 
 def _blank_literals(source: str) -> str:
     return _PROC_LIT_RE.sub(
-        lambda match: "".join(c if c == "\n" else " " for c in match.group(0)),
-        source)
+        lambda match: blank_keep_newlines(match.group(0)), source)
 
 
 def _exec_char_spans(source: str) -> list[tuple[int, int]]:

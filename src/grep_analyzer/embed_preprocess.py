@@ -6,6 +6,7 @@ proc_preprocess へは単方向依存（循環を避けるため）。
 
 import re
 
+from grep_analyzer.patterns.literal_masking import blank_keep_newlines
 from grep_analyzer.proc_preprocess import mask_exec_sql
 
 _JSP_COMMENT = re.compile(r"<%--.*?--%>", re.DOTALL)
@@ -19,17 +20,12 @@ _EL = re.compile(r"[$#]\{(.*?)\}", re.DOTALL)
 _EL_PREFIX = re.compile(r"\b[A-Za-z_]\w*:")
 
 
-def _blank(text: str) -> str:
-    """改行を保ち他を空白へ置換する（長さ保存）。"""
-    return "".join("\n" if c == "\n" else " " for c in text)
-
-
 def extract_jsp_java(source: str) -> str:
     """JSP から java host が読める区間だけ残し他を空白化（行数保存）。"""
-    out = list(_blank(source))
+    out = list(blank_keep_newlines(source))
     masked = source
     for rx in (_JSP_COMMENT, _HTML_COMMENT, _JSP_DIRECTIVE, _JSP_ACTION):
-        masked = rx.sub(lambda m: _blank(m.group(0)), masked)
+        masked = rx.sub(lambda m: blank_keep_newlines(m.group(0)), masked)
     for m in _JSP_CODE.finditer(masked):
         for i in range(m.start(1), m.end(1)):
             out[i] = source[i]
@@ -82,8 +78,8 @@ def _ng_normalize(expr: str) -> str:
 
 def extract_angular_ts(source: str) -> str:
     """Angular テンプレから TypeScript host が読める式だけ残す（行数保存）。"""
-    out = list(_blank(source))
-    masked = _HTML_COMMENT.sub(lambda m: _blank(m.group(0)), source)
+    out = list(blank_keep_newlines(source))
+    masked = _HTML_COMMENT.sub(lambda m: blank_keep_newlines(m.group(0)), source)
 
     def _emit(raw_start: int, raw_expr: str):
         # norm が raw_expr より短い場合（of→= 縮約・パイプ除去）、残余位置は
@@ -131,7 +127,7 @@ def _cached_inline_spans(ts_source: str, cache: dict | None) -> list[tuple[int, 
 
 def extract_inline_angular(ts_source: str) -> str:
     """inline template 領域のみ angular 式を残し他を空白化（行数保存）。"""
-    kept = list(_blank(ts_source))
+    kept = list(blank_keep_newlines(ts_source))
     for m in _INLINE_TEMPLATE.finditer(ts_source):
         for i in range(m.start(1), m.end(1)):
             kept[i] = ts_source[i]

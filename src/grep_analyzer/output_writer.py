@@ -140,9 +140,9 @@ def finalize(out_dir: "Path", keyword: str, rows: "list[Hit]", opts,
     # 新 manifest で上書きする前に、旧 run の part 名を控える（孤児削除に使う・H3）。
     prev_part_names = _previous_part_names(out_dir, keyword)
     ordered = sorted(rows, key=sort_key)
-    n = len(ordered)
-    L = opts.max_rows_per_part
-    nparts = 1 if n <= L else math.ceil(n / L)
+    total = len(ordered)
+    rows_per_part = opts.max_rows_per_part
+    nparts = 1 if total <= rows_per_part else math.ceil(total / rows_per_part)
     width = max(2, len(str(nparts)))
     header = "\t".join(TSV_COLUMNS)
     enc = opts.output_encoding
@@ -156,10 +156,10 @@ def finalize(out_dir: "Path", keyword: str, rows: "list[Hit]", opts,
         name = f"{keyword}.tsv"
         rows_lines = [_data_line(h) for h in ordered]
         _atomic_write(out_dir / name, _part_bytes(header, rows_lines, enc))
-        parts_meta.append({"name": name, "rows": n})
+        parts_meta.append({"name": name, "rows": total})
     else:
         for i in range(nparts):
-            chunk = ordered[i * L:(i + 1) * L]
+            chunk = ordered[i * rows_per_part:(i + 1) * rows_per_part]
             name = f"{keyword}.part{i + 1:0{width}d}.tsv"
             _atomic_write(out_dir / name,
                           _part_bytes(header, [_data_line(h) for h in chunk], enc))
@@ -167,7 +167,7 @@ def finalize(out_dir: "Path", keyword: str, rows: "list[Hit]", opts,
 
     manifest = {
         "schema_version": 1, "keyword": keyword, "encoding": enc,
-        "total_rows": n, "data_sha256": data_sha,
+        "total_rows": total, "data_sha256": data_sha,
         "tool_version": __version__,
         "max_rows_per_part": opts.max_rows_per_part,
         "items_per_mb": _ITEMS_PER_MB,

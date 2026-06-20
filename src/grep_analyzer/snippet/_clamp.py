@@ -5,7 +5,7 @@
 """
 
 SEP = " \\n "
-ELL = "…"
+ELLIPSIS = "…"
 LINE_MAX = 12
 CHAR_MAX = 800
 
@@ -22,18 +22,18 @@ def _escape_sep(line: str) -> str:
 
 
 def _truncate_for_render(text: str, char_max: int) -> str:
-    """raw text を「_render の escape 後の最終長が char_max を超えない」よう切り ELL を足す。
+    """raw text を「_render の escape 後の最終長が char_max を超えない」よう切り ELLIPSIS を足す。
 
     escape 後長が既に char_max 以下ならそのまま返す。SEP(4 文字)は _escape_sep で 5 文字へ
     膨らむため、raw 長だけで切ると escape 後に char_max を超え得る（M）。超過時は
-    escape 後長 ≤ char_max-len(ELL) となる最大 raw prefix を二分探索で求める。_escape_sep は
-    単調増加なので二分が成立する。返り値は raw prefix＋ELL（_render 側が後段で 1 回だけ
+    escape 後長 ≤ char_max-len(ELLIPSIS) となる最大 raw prefix を二分探索で求める。_escape_sep は
+    単調増加なので二分が成立する。返り値は raw prefix＋ELLIPSIS（_render 側が後段で 1 回だけ
     escape する契約は維持）。
     """
     if len(_escape_sep(text)) <= char_max:
         return text
-    budget = char_max - len(ELL)
-    if budget < 0:                        # ELL すら入らない極小 char_max（本番 800 では未到達）
+    budget = char_max - len(ELLIPSIS)
+    if budget < 0:                        # ELLIPSIS すら入らない極小 char_max（本番 800 では未到達）
         return text[:max(0, char_max)]
     lo, hi = 0, len(text)
     while lo < hi:
@@ -42,15 +42,15 @@ def _truncate_for_render(text: str, char_max: int) -> str:
             lo = mid
         else:
             hi = mid - 1
-    return text[:lo] + ELL
+    return text[:lo] + ELLIPSIS
 
 
 def _render(rows: list[str], top_k: int, bot_k: int) -> str:
     body = SEP.join(_escape_sep(r) for r in rows)
     if top_k:
-        body = f"{ELL}(+{top_k}上行省略)" + body
+        body = f"{ELLIPSIS}(+{top_k}上行省略)" + body
     if bot_k:
-        body = body + f"{ELL}(+{bot_k}下行省略)"
+        body = body + f"{ELLIPSIS}(+{bot_k}下行省略)"
     return body
 
 

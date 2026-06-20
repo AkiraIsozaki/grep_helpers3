@@ -15,13 +15,13 @@ from grep_analyzer.snippet._clamp import LINE_MAX
 
 
 def _balanced(text: str) -> bool:
-    paren_depth = 0
+    bracket_depth = 0
     for c in text:
         if c in "([{":
-            paren_depth += 1
+            bracket_depth += 1
         elif c in ")]}":
-            paren_depth -= 1
-    return paren_depth == 0 and text.count("'") % 2 == 0 and text.count('"') % 2 == 0
+            bracket_depth -= 1
+    return bracket_depth == 0 and text.count("'") % 2 == 0 and text.count('"') % 2 == 0
 
 
 def heuristic_span(lines: list[str], hit: int, language: str) -> tuple[int, int]:
