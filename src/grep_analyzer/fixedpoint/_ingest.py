@@ -14,6 +14,7 @@ from grep_analyzer.fixedpoint._scan import kinds_of
 from grep_analyzer.fixedpoint._state import ChaseState
 from grep_analyzer.provenance import Occurrence
 from grep_analyzer.stoplist import partition
+from grep_analyzer.tsv import sanitize_field
 
 
 def ingest_one(state: ChaseState, parent: Occurrence, language: str,
@@ -70,7 +71,10 @@ def absorb_results(state: ChaseState, pass_results, scan_chase: set[str],
     for relpath, enc, replaced, language, dialect, found in pass_results:
         state.encoding_of.setdefault(relpath, (enc, replaced))
         if replaced and relpath not in state.replaced_logged:
-            diag.add("decode_replaced", relpath)
+            # indirect 経路の decode_replaced も sanitize_field を通す（M2 完全化）。
+            # diagnostics の detail 行は `{category}\t{message}` 形式なので、relpath 内の
+            # 生 TAB/CR が列・行構造を壊す。direct 経路（pipeline）と規約を揃える。
+            diag.add("decode_replaced", sanitize_field(relpath))
             state.replaced_logged.add(relpath)
         for symbol, lineno, line, chase_symbols in found:
             if symbol not in scan_chase and symbol not in scan_term:

@@ -140,15 +140,20 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
             for kw, st in states_by_kw.items():
                 sc, stm = per_kw[kw]
                 kw_results = pass_results
-                if opts.perkw_diag and opts.use_ripgrep:
-                    # per-keyword 絞り込みは global union_keep の有無に依らず行う（M3）。
-                    # global union に非 ASCII 記号が 1 つでもあると union_keep=None（全件走査）に
-                    # 落ちるが、ここで ASCII-only keyword の絞り込みまで諦めると、その keyword が
-                    # 他 keyword しか触れない relpath の decode_replaced/encoding_of を取り込み、
-                    # 逐次版（単独 prefilter で絞られる）と帰属が食い違う。
-                    # restrict_to は union_keep（None のとき全コーパス `.`、集合のときその縮小空間）。
-                    # ASCII-only keyword は keep_k で絞られ、非 ASCII keyword は keep_k=None で
-                    # FULL のまま（＝逐次版でも全件走査）になり、双方で逐次版と一致する。
+                # per-keyword 絞り込みは global prefilter が効いた（union_keep が集合の）ときだけ行う。
+                # union_keep が縮小集合なら keep_k ⊆ union_keep で各 rg は安価。
+                #
+                # 既知の受容済み制限（M3 を撤回・性能優先）: global union に非 ASCII 記号が混じると
+                # union_keep=None（全件走査）に落ちる。このとき ASCII-only keyword の per-keyword
+                # 絞り込みまで行うには restrict_to=None ＝全コーパス rg を keyword×hop ごとに spawn
+                # する必要があり、SJIS で日本語識別子を追う本ツールの主用途（60GB・多 keyword・多 hop）
+                # でフルコーパス走査が爆発する。得られるのは decode_replaced 診断の帰属精度のみ
+                # （TSV は encoding_of を exact relpath でしか読まないため不変・perkw_diag gated）。
+                # 性能退行が診断専用の帰属差より有害なため、非 ASCII union 時は FULL のまま許容する
+                # （spec §2 の「keyword 横断 DETAIL の逐次版一致は未実現」と同類の既知差）。
+                if opts.perkw_diag and opts.use_ripgrep and union_keep is not None:
+                    # 探索対象を全コーパス `.` ではなく union_keep に限定する
+                    # （keep_k ⊆ union_keep なので結果は同集合・探索空間のみ縮小）。
                     keep_k = _rg.prefilter(source_root, rel_to_abs, sorted(sc | stm),
                                            restrict_to=union_keep)
                     if keep_k is not None:
