@@ -1,6 +1,20 @@
 """perl/groovy ヒューリスティック snippet 境界（spec §6）。"""
 
+import grep_analyzer.snippet._heuristic as H
 from grep_analyzer.snippet import build_snippet
+
+
+def test_heuristic_spanはファイル全体ではなく窓だけをmaskする(monkeypatch):
+    # M1: mask は stop() が触れる窓 [hit±(LINE_MAX-1)] だけに限定すべき。
+    # 旧実装はヒットごとに全行を mask し O(ヒット数×ファイルサイズ) になっていた。
+    calls = {"n": 0}
+    real = H.mask_literals
+    monkeypatch.setattr(H, "mask_literals",
+                        lambda lang, ln: (calls.__setitem__("n", calls["n"] + 1),
+                                          real(lang, ln))[1])
+    lines = [f"x{i} = {i};" for i in range(1000)]
+    H.heuristic_span(lines, 500, "sql")
+    assert calls["n"] <= 2 * H.LINE_MAX            # 全行(1000)を mask しない
 
 
 def test_perlのsnippetは文末セミコロンで境界を取る():

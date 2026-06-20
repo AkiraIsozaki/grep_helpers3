@@ -76,6 +76,6 @@ def test_未完了kwはresumeでも再処理される(tmp_path, monkeypatch):
     calls: list[str] = []
     real_finalize = pipeline.output_writer.finalize
     monkeypatch.setattr(pipeline.output_writer, "finalize",
-                        lambda *x: (calls.append(x[1]), real_finalize(*x))[1])
+                        lambda *x, **kw: (calls.append(x[1]), real_finalize(*x, **kw))[1])
     assert main(a + ["--resume"]) == 0
     assert calls == ["K1"]                                 # manifest 無し→再処理される

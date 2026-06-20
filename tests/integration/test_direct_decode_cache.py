@@ -3,7 +3,6 @@
 import dataclasses
 from pathlib import Path
 
-from grep_analyzer import dispatch
 from grep_analyzer.fixedpoint import _scan
 from grep_analyzer.pipeline import _default_opts, run
 
@@ -20,24 +19,25 @@ def _setup(tmp_path: Path):
     return src, inp
 
 
-def test_direct経路がdecode_cacheを共有し言語判定を二重に走らせない(tmp_path, monkeypatch):
+def test_direct経路がdecode_cacheを共有し本文decodeを二重に走らせない(tmp_path, monkeypatch):
     src, inp = _setup(tmp_path)
     calls = {"n": 0}
-    orig = dispatch.detect_language
+    orig = _scan.decode_with_memo
 
     def spy(*a, **k):
         calls["n"] += 1
         return orig(*a, **k)
 
-    # 修正後は direct/seed/scan/finalize の言語判定は全て _scan._meta_from_text が
-    # 呼ぶ detect_language に一本化される。そこを差し替えれば全経路を捕捉できる。
-    monkeypatch.setattr(dispatch, "detect_language", spy)
-    monkeypatch.setattr(_scan, "detect_language", spy)
+    # 高コストな本文 decode（read→decode_bytes/chardet）は decode_with_memo を通る。
+    # direct/seed/scan/finalize の miss 経路はすべてここを通るので差し替えれば全経路を捕捉できる。
+    # language/dialect は安価なので hit ごとに relpath から再導出する（H2）が、本文 decode は
+    # ファイルにつき 1 回に固定されていなければならない（これが decode_cache の本旨）。
+    monkeypatch.setattr(_scan, "decode_with_memo", spy)
 
     opts = dataclasses.replace(_default_opts(),
                                decode_cache_dir=tmp_path / "dcache")
     rc = run(input_dir=inp, output_dir=tmp_path / "out", source_root=src, opts=opts)
     assert rc == 0
-    # direct が decode_cache に put すれば seed は hit し、言語判定は 1 回で済む。
+    # direct が decode_cache に put すれば seed は hit し、本文 decode は 1 回で済む。
     # 修正前は direct(キャッシュ非経由)＋seed(miss) で 2 回走っていた。
-    assert calls["n"] == 1, f"言語判定が {calls['n']} 回（direct と seed で二重）"
+    assert calls["n"] == 1, f"本文 decode が {calls['n']} 回（direct と seed で二重）"

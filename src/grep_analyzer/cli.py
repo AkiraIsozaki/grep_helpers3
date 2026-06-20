@@ -1,4 +1,5 @@
 import argparse
+import codecs
 from pathlib import Path
 
 from grep_analyzer.fixedpoint import EngineOptions
@@ -185,6 +186,17 @@ def main(argv: list[str] | None = None) -> int:
             if not sep or not ext or not lang:
                 parser.error(
                     f"--lang-map invalid pair {pair!r} (expected .ext=lang)")
+    # 不正コーデック名は walk+direct+不動点を全部終えた後の finalize 内 LookupError で
+    # 初めて倒れる。全走査前に明示エラーにする（L2）。
+    try:
+        codecs.lookup(args.output_encoding)
+    except LookupError:
+        parser.error(f"--output-encoding unknown codec: {args.output_encoding!r}")
+    for codec in (s for s in args.encoding_fallback.split(",") if s):
+        try:
+            codecs.lookup(codec)
+        except LookupError:
+            parser.error(f"--encoding-fallback unknown codec: {codec!r}")
     opts = _opts_from(args)
     return run(input_dir=Path(args.input), output_dir=Path(args.output),
                source_root=Path(args.source_root), opts=opts)

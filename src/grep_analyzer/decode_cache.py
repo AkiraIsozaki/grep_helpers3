@@ -1,9 +1,16 @@
-"""decode/言語判定の永続キャッシュ。値は (text, enc, replaced, language, dialect)。
+"""decode の永続キャッシュ。値は (text, enc, replaced)。
+
+language/dialect は **キャッシュしない**。キーは realpath で正規化されるため
+（symlink/綴り違いで同一実体を共有・#2）、relpath 由来の language/dialect を値に含めると
+別 relpath（例: `link.sql`→実体 `real.c`）が同一アーティファクトを共有した瞬間に
+先勝ちの言語で誤分類され非決定になる（H2）。decode 結果（text/enc/replaced）はバイト
+（＋namespace の fast/fallback）にのみ依存するのでキャッシュ安全だが、language/dialect は
+relpath 依存なので呼出側（_scan._meta_from_text）が hit ごとに relpath から再導出する。
 
 キーに (realpath, mtime_ns, size, namespace) を含むため hop・worker・run を
 またいで安全に共有でき、ソース変更時は自動でミスする。パスは realpath で正規化し、
 direct/seed/scan/finalize が綴り違い（source_root/relpath と walk 由来 abspath、
-symlink 経由など）でも同一アーティファクトを共有する（#2）。アーティファクトは
+symlink 経由など）でも同一 decode アーティファクトを共有する（#2）。アーティファクトは
 disk 上の 1 ファイル（1行 JSON ヘッダ ＋ 改行 ＋ 復号UTF-8本文）として保存する。
 
 耐久性より速度を優先し fsync はしない（本キャッシュは純粋な再計算可能キャッシュで、
@@ -127,20 +134,24 @@ class DecodeCache:
             self._discard(path)
             return None
         try:
-            # 必須メタキー欠落（旧/新フォーマット差・部分破損）は KeyError で run を
+            # 必須メタキー欠落（旧 5-tuple フォーマット差・部分破損）は KeyError で run を
             # 落とさず miss へ降格する（破損アーティファクトを正本にしない・H5/#8）。
-            return (body, meta["enc"], meta["replaced"],
-                    meta["language"], meta["dialect"])
+            return (body, meta["enc"], meta["replaced"])
         except KeyError:
             self._discard(path)
             return None
 
-    def put(self, abspath: str, meta) -> None:
+    def put(self, abspath: str, meta, sig=None) -> None:
+        # meta は (text, enc, replaced[, language, dialect])。language/dialect は
+        # relpath 依存なのでキャッシュしない（H2）。後方互換のため余分な要素は無視する。
+        # sig（呼出側が read した時点の (mtime_ns, size)）を渡すと、独立 re-stat による
+        # 「新 sig に旧本文」の stale 化を防ぐ（L1）。未指定時は従来どおり put 時点で stat。
         real = self._canon(abspath)
-        sig = self._stat(real)
+        if sig is None:
+            sig = self._stat(real)
         if sig is None:
             return
-        text, enc, replaced, language, dialect = meta
+        text, enc, replaced = meta[0], meta[1], meta[2]
         path = self._artifact_path(real, sig)
         try:
             # encode を try 内に入れ、lone surrogate 等の UnicodeEncodeError でも run を
@@ -149,8 +160,8 @@ class DecodeCache:
             # 揃える・H5/L-1）。
             body = text.encode("utf-8")
             header = json.dumps({
-                "enc": enc, "replaced": replaced, "language": language,
-                "dialect": dialect, "mtime_ns": sig[0], "size": sig[1],
+                "enc": enc, "replaced": replaced,
+                "mtime_ns": sig[0], "size": sig[1],
                 "blen": len(body),
             }, ensure_ascii=False)
             fd, tmp = tempfile.mkstemp(dir=str(self._dir),

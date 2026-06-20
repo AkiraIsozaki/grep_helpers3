@@ -30,7 +30,12 @@ def heuristic_span(lines: list[str], hit: int, language: str) -> tuple[int, int]
     ヒット行自身は停止判定しない。各方向1行ずつ移動し、停止条件を満たした行で停止する。
     停止条件: 行末 \\ 無・括弧/クォートバランス・SQL は ; か句境界・shell は fi/done/esac 等。
     """
-    masked_lines = [mask_literals(language, ln) for ln in lines]
+    # stop() が参照するのはヒット ±(LINE_MAX-1) の窓だけ（上下とも最大 LINE_MAX-1 行移動）。
+    # 旧実装は全行を mask し、ヒットごと呼ばれるため O(ヒット数×ファイルサイズ) だった（M1）。
+    # 窓外を mask しても結果に使われないので、窓内のみ mask して出力はバイト不変。
+    lo = max(0, hit - (LINE_MAX - 1))
+    hi = min(len(lines) - 1, hit + (LINE_MAX - 1))
+    masked_lines = {i: mask_literals(language, lines[i]) for i in range(lo, hi + 1)}
 
     def stop(i: int) -> bool:
         x = masked_lines[i]

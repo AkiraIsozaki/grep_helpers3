@@ -24,6 +24,7 @@ from grep_analyzer.ingest import parse_grep_line
 from grep_analyzer.model import Hit
 from grep_analyzer.snippet import build_snippet
 from grep_analyzer.snippet._sanitize_line import _physical_lines
+from grep_analyzer.tsv import sanitize_field
 from grep_analyzer.walk import (
     DEFAULT_EXCLUDE,
     collect_files_ex,
@@ -91,7 +92,8 @@ def run(
         # （jobs>1 の並列 SCAN は process-local の _WORKER_ENC を使い fork 越しに共有不可）。
         # キーは str(abspath)（未正規化）だが memo は純粋なのでキー差異は性能劣化に留まり出力不変。
         enc_memo = EncMemo()
-        from grep_analyzer.fixedpoint._scan import make_decode_cache, meta_cached
+        from grep_analyzer.fixedpoint._scan import (
+            make_decode_cache, meta_cached, read_bytes_with_sig)
         # namespace は decode_cache_namespace(opts) が fast/fallback/lang_map を畳み込む（C1）。
         decode_cache = make_decode_cache(opts)
 
@@ -99,15 +101,20 @@ def run(
         direct_hits: dict[str, list[Hit]] = {}
         direct_diag: dict[str, Diagnostics] = {}
         resume_skipped: list[str] = []
+        kw_fingerprint: dict[str, str] = {}
         for grep_file in sorted(Path(input_dir).glob("*.grep")):
             keyword = grep_file.stem
+            grep_bytes = grep_file.read_bytes()
+            # 入力指紋（.grep 本文＋行に影響する opts＋source_root）。resume の完了判定に渡し、
+            # finalize で manifest に焼き込む。入力/オプションが変われば再処理させる（H1）。
+            fp = resume.compute_inputs_fingerprint(grep_bytes, source_root, opts)
             # resume: 完了済 keyword は direct も states も finalize も行わずスキップ。
-            if opts.resume and resume.is_complete(output_dir, keyword, opts):
+            if opts.resume and resume.is_complete(output_dir, keyword, opts, fp):
                 resume_skipped.append(keyword)
                 continue
+            kw_fingerprint[keyword] = fp
             kw_diag = Diagnostics()
             direct_diag[keyword] = kw_diag
-            grep_bytes = grep_file.read_bytes()
             # content 復号用にファイル単位で文字コードを 1 回だけ判定（chardet 1回・行間一貫）。
             # パスは生バイトのまま os.fsdecode するため、ここでは encoding のみ使う。
             _, grep_enc, _ = decode_bytes(grep_bytes, fb, fast=opts.fast_encoding)
@@ -145,28 +152,39 @@ def run(
                         # ファイルにつき 1 回に固定する（#1: 旧 direct は cache 非経由で
                         # 同一 run 内に seed と二重 decode していた）。language/dialect は
                         # _meta_from_text が LANG_SAMPLE_BYTES 窓で確定し scan/indirect と同値。
-                        file_text, enc, replaced, language, dialect = meta_cached(
-                            enc_memo, decode_cache, str(target), relpath,
-                            target.read_bytes(), lang_map, fb, fast=opts.fast_encoding)
-                        sample = file_text[:LANG_SAMPLE_BYTES]
-                        unsupported = (
-                            not extension_resolves_language(relpath, lang_map)
-                            and shebang_dialect(sample) is not None  # シェバン行が存在
-                            and shebang_language(sample) is None      # 対応言語に解決しない
-                        )
-                        cur_ctx = (file_text, enc, replaced, language, dialect,
-                                   unsupported, {}, _physical_lines(file_text))
+                        try:
+                            # bytes と read 時 sig を同一 fd で取得（put の stale 化を防ぐ・L1）。
+                            raw, sig = read_bytes_with_sig(target)
+                        except OSError:
+                            # is_file 後の TOCTOU（消失/権限変化）。seed/scan と同じく run を
+                            # 落とさず欠落扱い（missing_source）へ降格する（L3）。
+                            cur_ctx = None
+                        else:
+                            file_text, enc, replaced, language, dialect = meta_cached(
+                                enc_memo, decode_cache, str(target), relpath,
+                                raw, lang_map, fb, fast=opts.fast_encoding, sig=sig)
+                            sample = file_text[:LANG_SAMPLE_BYTES]
+                            unsupported = (
+                                not extension_resolves_language(relpath, lang_map)
+                                and shebang_dialect(sample) is not None  # シェバン行が存在
+                                and shebang_language(sample) is None      # 対応言語に解決しない
+                            )
+                            cur_ctx = (file_text, enc, replaced, language, dialect,
+                                       unsupported, {}, _physical_lines(file_text))
                     else:
                         cur_ctx = None
                 if cur_ctx is None:
-                    kw_diag.add("missing_source", relpath)
+                    # パスは sanitize_field を通す。Unix パスは TAB/CR を含み得るが、
+                    # diagnostics の detail 行は `{category}\t{message}` 形式なので生 TAB/CR が
+                    # 列・行構造を壊す（TSV の file 列と同じ規約に揃える・M2）。
+                    kw_diag.add("missing_source", sanitize_field(relpath))
                     continue
                 (file_text, enc, replaced, language, dialect,
                  unsupported, tree_cache, phys_lines) = cur_ctx
                 if replaced:
-                    kw_diag.add("decode_replaced", str(relpath))
+                    kw_diag.add("decode_replaced", sanitize_field(str(relpath)))
                 if unsupported:
-                    kw_diag.add("unsupported_shebang", str(relpath))
+                    kw_diag.add("unsupported_shebang", sanitize_field(str(relpath)))
                 category, confidence = classify_hit(
                     language, dialect, file_text, lineno, content, cache=tree_cache)
                 hits.append(Hit(
@@ -200,7 +218,8 @@ def run(
         for kw in sorted(states_by_kw):
             rows = [replace(h, file=f"{src_abs}/{h.file}")
                     for h in direct_hits[kw] + indirect[kw]]
-            output_writer.finalize(output_dir, kw, rows, opts)
+            output_writer.finalize(output_dir, kw, rows, opts,
+                                   inputs_fingerprint=kw_fingerprint[kw])
 
         # --- 6. diagnostics 併合（逐次版の diag 追記順を再現） ---
         # 逐次版順序: walk → keyword ソート順に [direct diags, indirect diags]。

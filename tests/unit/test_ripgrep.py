@@ -178,3 +178,16 @@ def test_run_rg_listはtimeoutでNoneへフォールバック(monkeypatch):
 
     monkeypatch.setattr(ripgrep.subprocess, "run", fake_run)
     assert ripgrep._run_rg_list("rg", "/tmp/pat", Path("."), ["."]) is None
+
+
+def test_空文字シンボルはrgを起動せずprefilterを無効化しない(monkeypatch, tmp_path):
+    # 空文字 symbol は rg -F で全行マッチ＝全件返却となり prefilter を無効化する（L4）。
+    # automaton.build は空を弾くので prefilter も揃えて空を除外し、rg を起動しない。
+    from grep_analyzer import ripgrep
+    called = {"n": 0}
+    monkeypatch.setattr(ripgrep, "_resolve_rg", lambda force=False: "rg")
+    monkeypatch.setattr(
+        ripgrep, "_run_rg_list",
+        lambda *a, **k: (called.__setitem__("n", called["n"] + 1), set())[1])
+    assert ripgrep.prefilter(tmp_path, {}, [""]) == set()
+    assert called["n"] == 0

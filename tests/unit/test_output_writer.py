@@ -169,3 +169,14 @@ def test_glob特殊文字keywordで他keyword出力を消さない(tmp_path):
     finalize(tmp_path, "a[b]", _mk(2), _opts())
     assert (tmp_path / "ab.tsv").exists()              # 他 keyword 出力は無傷
     assert (tmp_path / "a[b].tsv").exists()            # 自身の出力は生成
+
+
+def test_partNを名に持つ別keyword出力を消さない(tmp_path):
+    # keyword "foo.part5" の有効出力（単一 part → foo.part5.tsv）を本物の finalize で作る。
+    finalize(tmp_path, "foo.part5", _mk(1), _opts())
+    assert (tmp_path / "foo.part5.tsv").exists()
+    # keyword "foo" を finalize。旧実装は glob "foo.part*.tsv" が foo.part5.tsv に当たり誤削除した（H3）。
+    finalize(tmp_path, "foo", _mk(1), _opts())
+    assert (tmp_path / "foo.part5.tsv").exists()       # 別 keyword の出力は無傷であるべき
+    assert (tmp_path / "foo.part5.manifest.json").exists()
+    assert (tmp_path / "foo.tsv").exists()             # 自身の出力は生成

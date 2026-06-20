@@ -4,7 +4,6 @@
 正規形は _canonical_data_blob に一元化（書込側=完了判定=テストが共有）。
 """
 
-import glob
 import hashlib
 import json
 import math
@@ -103,6 +102,27 @@ def _part_bytes(header: str, data_rows: list[str], encoding: str) -> bytes:
         encoding, errors="replace")
 
 
+def _previous_part_names(out_dir: "Path", keyword: str) -> set:
+    """既存 manifest が指す part 名集合を返す（旧 run の孤児削除対象・無ければ空集合）。
+
+    glob（`{keyword}.part*.tsv`）は別 keyword の出力（例: keyword "foo" の glob が
+    keyword "foo.part5" の `foo.part5.tsv` に当たる）を巻き込んで誤削除する（H3）。
+    削除対象を「この keyword の旧 manifest が実際に列挙した part 名」だけに厳密化する。
+    """
+    mpath = out_dir / f"{keyword}.manifest.json"
+    try:
+        m = json.loads(mpath.read_text("utf-8"))
+    except (OSError, ValueError):
+        return set()
+    if not isinstance(m, dict):
+        return set()
+    names = set()
+    for p in m.get("parts", []):
+        if isinstance(p, dict) and isinstance(p.get("name"), str):
+            names.add(p["name"])
+    return names
+
+
 def _write_manifest(out_dir: "Path", keyword: str, manifest: dict) -> None:
     """manifest を原子確定（テストの monkeypatch フック点）。"""
     # keyword（=.grep 名）に surrogate が混じっても落とさない（errors="replace"）。
@@ -112,9 +132,12 @@ def _write_manifest(out_dir: "Path", keyword: str, manifest: dict) -> None:
     _atomic_write(out_dir / f"{keyword}.manifest.json", blob)
 
 
-def finalize(out_dir: "Path", keyword: str, rows: "list[Hit]", opts) -> None:
+def finalize(out_dir: "Path", keyword: str, rows: "list[Hit]", opts,
+             inputs_fingerprint: "str | None" = None) -> None:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    # 新 manifest で上書きする前に、旧 run の part 名を控える（孤児削除に使う・H3）。
+    prev_part_names = _previous_part_names(out_dir, keyword)
     ordered = sorted(rows, key=sort_key)
     n = len(ordered)
     L = opts.max_rows_per_part
@@ -150,13 +173,17 @@ def finalize(out_dir: "Path", keyword: str, rows: "list[Hit]", opts) -> None:
             "grep_analyzer.budget", fromlist=["_ITEMS_PER_MB"])._ITEMS_PER_MB,
         "parts": parts_meta, "tool": "grep_analyzer", "spec_phase": "3",
     }
+    if inputs_fingerprint is not None:            # resume の入力指紋照合用（H1）
+        manifest["inputs_fingerprint"] = inputs_fingerprint
     _write_manifest(out_dir, keyword, manifest)   # manifest 原子確定
     _fsync_dir(out_dir)
 
-    # manifest 確定後に孤児削除（有効出力を新出力出現前に破壊しない）
+    # manifest 確定後に孤児削除（有効出力を新出力出現前に破壊しない）。
+    # 削除対象は旧 manifest が列挙した part 名のうち今回 keep に無いものだけ。
+    # glob を使わないため別 keyword（"foo" と "foo.part5" 等）の出力を巻き込まない（H3）。
     keep = {p["name"] for p in parts_meta} | {f"{keyword}.manifest.json"}
-    esc = glob.escape(keyword)
-    for p in list(out_dir.glob(f"{esc}.tsv")) + \
-            list(out_dir.glob(f"{esc}.part*.tsv")):
-        if p.name not in keep:
-            p.unlink()
+    for name in sorted(prev_part_names - keep):
+        try:
+            (out_dir / name).unlink()
+        except OSError:
+            pass

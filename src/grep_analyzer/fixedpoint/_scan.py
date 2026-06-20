@@ -12,9 +12,23 @@ worker からの戻り値を呼出側で追跡状態へ反映する（worker iso
 import hashlib
 import json
 import multiprocessing
+import os
 import tempfile
 from collections import OrderedDict
 from pathlib import Path
+
+
+def read_bytes_with_sig(path):
+    """bytes と (mtime_ns, size) を同一 fd の fstat で一貫取得する（L1）。
+
+    decode_cache.put が独立に re-stat すると、呼出側 read と put の間にソースが
+    変わったとき「新 sig に旧本文」を載せた stale アーティファクトを正本化し得る。
+    read と stat を同一オープン fd で行い、put にこの sig を渡すことで本文と sig を一致させる。
+    """
+    with open(path, "rb") as f:
+        raw = f.read()
+        st = os.fstat(f.fileno())
+    return raw, (st.st_mtime_ns, st.st_size)
 
 from grep_analyzer import automaton
 from grep_analyzer.chase import extract_chase_symbols_from_root
@@ -62,7 +76,7 @@ def meta_via_memo(enc_memo, key, relpath, raw, lang_map, fallback, fast: bool = 
 
 
 def meta_cached(enc_memo, decode_cache, key, relpath, raw, lang_map, fallback,
-                fast: bool = False):
+                fast: bool = False, sig=None):
     """decode_cache hit を優先し、miss は meta_via_memo/file_meta と同一結果を put して返す。
 
     seed/finalize の直呼び decode を hop 走査と同じ永続層に乗せる。出力は同値である。
@@ -75,13 +89,15 @@ def meta_cached(enc_memo, decode_cache, key, relpath, raw, lang_map, fallback,
     if decode_cache is not None:
         dhit = decode_cache.get(key)
         if dhit is not None:
-            return dhit
+            # language/dialect は relpath 由来なのでキャッシュ本文から毎回再導出する（H2）。
+            text, enc, replaced = dhit
+            return _meta_from_text(relpath, text, enc, replaced, lang_map)
     if enc_memo is not None:
         meta = meta_via_memo(enc_memo, key, relpath, raw, lang_map, fallback, fast=fast)
     else:
         meta = file_meta(relpath, raw, lang_map, fallback_chain=fallback, fast=fast)
     if decode_cache is not None:
-        decode_cache.put(key, meta)
+        decode_cache.put(key, meta, sig=sig)
     return meta
 
 
@@ -141,16 +157,19 @@ def _read_meta(relpath, abspath, lang_map, fallback, cache, enc_memo=None,
     if decode_cache is not None:
         dhit = decode_cache.get(abspath)
         if dhit is not None:
+            # language/dialect は relpath 由来なのでキャッシュ本文から毎回再導出する（H2）。
+            text, enc, replaced = dhit
+            meta = _meta_from_text(relpath, text, enc, replaced, lang_map)
             if cache is not None:
-                cache.put(abspath, dhit)
-            return dhit
-    raw = Path(abspath).read_bytes()
+                cache.put(abspath, meta)
+            return meta
+    raw, sig = read_bytes_with_sig(abspath)
     if enc_memo is None:
         meta = file_meta(relpath, raw, lang_map, fallback_chain=fallback, fast=fast)
     else:
         meta = meta_via_memo(enc_memo, abspath, relpath, raw, lang_map, fallback, fast=fast)
     if decode_cache is not None:
-        decode_cache.put(abspath, meta)
+        decode_cache.put(abspath, meta, sig=sig)
     if cache is not None:
         cache.put(abspath, meta)
     return meta

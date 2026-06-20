@@ -228,6 +228,9 @@ def prefilter(
     rg = _resolve_rg()
     if rg is None:
         return None
+    # 空文字 symbol は rg -F で全行マッチ＝全件返却となり prefilter を無効化する（L4）。
+    # automaton.build と同様に空を除外し、全部空なら rg を起動せず set()。
+    symbols = [s for s in symbols if s]
     if not symbols:
         return set()
     if restrict_to is not None and not restrict_to:

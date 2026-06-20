@@ -146,3 +146,22 @@ def test_decode_cache_max_bytes_0は明示エラー(tmp_path):
                   "--output", str(tmp_path / "o"),
                   "--source-root", str(tmp_path), "--decode-cache-max-bytes", "0"])
     assert ei.value.code != 0
+
+
+def _base(tmp_path):
+    (tmp_path / "in").mkdir(exist_ok=True)
+    return ["--input", str(tmp_path / "in"), "--output", str(tmp_path / "o"),
+            "--source-root", str(tmp_path)]
+
+
+def test_不正なoutput_encodingは明示エラー(tmp_path):
+    # 不正コーデックは finalize 内 LookupError で全走査後に倒れる前に弾く（L2）。
+    with pytest.raises(SystemExit) as ei:
+        cli.main(_base(tmp_path) + ["--output-encoding", "utf-99"])
+    assert ei.value.code != 0
+
+
+def test_不正なencoding_fallbackコーデックは明示エラー(tmp_path):
+    with pytest.raises(SystemExit) as ei:
+        cli.main(_base(tmp_path) + ["--encoding-fallback", "cp932,bogus-codec"])
+    assert ei.value.code != 0

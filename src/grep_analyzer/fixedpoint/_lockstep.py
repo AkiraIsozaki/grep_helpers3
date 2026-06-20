@@ -140,9 +140,15 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
             for kw, st in states_by_kw.items():
                 sc, stm = per_kw[kw]
                 kw_results = pass_results
-                if opts.perkw_diag and opts.use_ripgrep and union_keep is not None:
-                    # 探索対象を全コーパス `.` ではなく union_keep に限定する
-                    # （keep_k ⊆ union_keep なので結果は同集合・探索空間のみ縮小）。
+                if opts.perkw_diag and opts.use_ripgrep:
+                    # per-keyword 絞り込みは global union_keep の有無に依らず行う（M3）。
+                    # global union に非 ASCII 記号が 1 つでもあると union_keep=None（全件走査）に
+                    # 落ちるが、ここで ASCII-only keyword の絞り込みまで諦めると、その keyword が
+                    # 他 keyword しか触れない relpath の decode_replaced/encoding_of を取り込み、
+                    # 逐次版（単独 prefilter で絞られる）と帰属が食い違う。
+                    # restrict_to は union_keep（None のとき全コーパス `.`、集合のときその縮小空間）。
+                    # ASCII-only keyword は keep_k で絞られ、非 ASCII keyword は keep_k=None で
+                    # FULL のまま（＝逐次版でも全件走査）になり、双方で逐次版と一致する。
                     keep_k = _rg.prefilter(source_root, rel_to_abs, sorted(sc | stm),
                                            restrict_to=union_keep)
                     if keep_k is not None:
