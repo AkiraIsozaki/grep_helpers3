@@ -180,6 +180,48 @@ def _read_meta(relpath, abspath, lang_map, fallback, cache, enc_memo=None,
     return meta
 
 
+class _LazyAstResolver:
+    """AST 言語のヒット行で chase symbol を解決する。
+
+    parse は最初に必要になった行（最初の symbol ヒット）まで遅延し、以後 root を使い回す。
+    typescript の inline angular template 行のみ angular_inline grammar で再解決する。
+    非 AST 言語・parse 失敗時は None を返し、呼出側で cs=None（行のみ素片）に落ちる。
+    """
+
+    def __init__(self, language, text):
+        self._language = language
+        self._text = text
+        self._is_ast = language in _AST_CHASERS
+        self._parsed = False
+        self._ts_root = None
+        self._ang_root = None
+        self._spans = []
+
+    def chase_symbols_at(self, i: int):
+        """1 始まり行 i の ChaseSymbols を返す（非 AST/parse 失敗は None）。"""
+        if not self._is_ast:
+            return None
+        if not self._parsed:
+            self._parsed = True
+            try:
+                self._ts_root = parse_tree(self._language, self._text)
+            except Exception:
+                self._ts_root = None
+            if self._ts_root is not None and self._language == "typescript":
+                self._spans = inline_template_spans(self._text)
+        if self._ts_root is None:
+            return None
+        if self._spans and any(s <= i - 1 <= e for s, e in self._spans):
+            if self._ang_root is None:
+                try:
+                    self._ang_root = parse_tree("angular_inline", self._text)
+                except Exception:
+                    self._ang_root = None
+            return (extract_chase_symbols_from_root("angular_inline", self._ang_root, i)
+                    if self._ang_root is not None else None)
+        return extract_chase_symbols_from_root(self._language, self._ts_root, i)
+
+
 def _scan_one(relpath, abspath, automaton_obj, lang_map, fallback, cache=None, enc_memo=None,
               decode_cache=None, fast: bool = False):
     """1 ファイルを **構築済 automaton** で読み走査しヒット素片を返す純関数である。
@@ -197,35 +239,12 @@ def _scan_one(relpath, abspath, automaton_obj, lang_map, fallback, cache=None, e
         return relpath, "utf-8", False, "c", "bourne", []
     found = []
     if automaton_obj is not None:
-        is_ast = language in _AST_CHASERS
-        ts_root = None
-        ang_root = None
-        spans = []
-        parsed = False                      # 最初の symbol ヒットまで parse を遅延
+        resolver = _LazyAstResolver(language, text)
         for i, line in enumerate(text.split("\n"), start=1):
             symbols = list(automaton.scan_line(automaton_obj, line))
             if not symbols:
                 continue
-            if is_ast and not parsed:
-                parsed = True
-                try:
-                    ts_root = parse_tree(language, text)
-                except Exception:
-                    ts_root = None
-                if ts_root is not None and language == "typescript":
-                    spans = inline_template_spans(text)
-            cs = None
-            if ts_root is not None:
-                if spans and any(s <= i - 1 <= e for s, e in spans):
-                    if ang_root is None:
-                        try:
-                            ang_root = parse_tree("angular_inline", text)
-                        except Exception:
-                            ang_root = None
-                    cs = (extract_chase_symbols_from_root("angular_inline", ang_root, i)
-                          if ang_root is not None else None)
-                else:
-                    cs = extract_chase_symbols_from_root(language, ts_root, i)
+            cs = resolver.chase_symbols_at(i)
             for symbol in symbols:
                 found.append((symbol, i, line, cs))
     return relpath, enc, replaced, language, dialect, found
@@ -356,6 +375,46 @@ def kinds_of(chase_symbols: ChaseSymbols) -> dict[str, str]:
     return out
 
 
+def _scan_chunk_parallel(chunk, scan_files, pool, opts, tick):
+    """並列 worker でチャンクを走査し結果 list を返す。
+
+    automaton は worker 側で signature（= chunk 内容ハッシュ）変化時のみ再構築する。
+    sig を内容ハッシュにすることで temp パス再利用での stale automaton を防ぎ、同一
+    symbol 集合の hop 連続で再構築をスキップできる。symbols は temp ファイル経由で渡す。
+    """
+    sig = hashlib.sha1(json.dumps(chunk).encode("utf-8")).hexdigest()
+    sf = tempfile.NamedTemporaryFile("w", suffix=".sym", delete=False,
+                                     encoding="utf-8")
+    sym_path = sf.name
+    try:
+        with sf:
+            json.dump(chunk, sf)
+        args = [(relpath, str(abspath), sig, sym_path)
+                for relpath, abspath in scan_files]
+        res = []
+        for item in pool.imap_unordered(_scan_file_worker, args,
+                                        chunksize=_map_chunksize(len(args), opts.jobs)):
+            res.append(item)
+            tick()
+        return res
+    finally:
+        Path(sym_path).unlink(missing_ok=True)
+
+
+def _scan_chunk_serial(chunk, scan_files, opts, fallback, file_cache, enc_memo,
+                       decode_cache, tick):
+    """逐次に chunk の automaton を 1 度構築し各ファイルを走査して結果 list を返す。"""
+    automaton_obj = automaton.build(chunk)
+    res = []
+    for relpath, abspath in scan_files:
+        res.append(_scan_one(relpath, str(abspath), automaton_obj,
+                             opts.lang_map, fallback, cache=file_cache,
+                             enc_memo=enc_memo, decode_cache=decode_cache,
+                             fast=opts.fast_encoding))
+        tick()
+    return res
+
+
 def scan_hop(scan_symbols, scan_files, opts, nchunks, file_cache=None, pool=None,
              enc_memo=None, progress=None, hop_no=0, decode_cache=None):
     """1 hop の走査を chunks に分けて実行し、relpath 単位の集約済み結果を返す。
@@ -382,42 +441,19 @@ def scan_hop(scan_symbols, scan_files, opts, nchunks, file_cache=None, pool=None
     file_meta_by_relpath: dict[str, tuple] = {}
     fallback = list(opts.encoding_fallback)
     scanned_count = 0
+
+    def tick():
+        nonlocal scanned_count
+        scanned_count += 1
+        if progress is not None:
+            progress.tick(hop_no, scanned_count)
+
     for chunk in chunks:
-        # automaton はチャンク単位で 1 度だけ構築する。
-        # Pool は run 単位で 1 度だけ生成され（make_pool）、automaton は worker 側で
-        # signature（= chunk 内容ハッシュ）変化時のみ再構築する。symbols は temp ファイル経由。
-        # sig を内容ハッシュにすることで temp パス再利用での stale automaton を防ぎ、
-        # 同一 symbol 集合の hop 連続で再構築をスキップできる。
         if opts.jobs > 1 and pool is not None:
-            sig = hashlib.sha1(json.dumps(chunk).encode("utf-8")).hexdigest()
-            sf = tempfile.NamedTemporaryFile("w", suffix=".sym", delete=False,
-                                             encoding="utf-8")
-            sym_path = sf.name
-            try:
-                with sf:
-                    json.dump(chunk, sf)
-                args = [(relpath, str(abspath), sig, sym_path)
-                        for relpath, abspath in scan_files]
-                res = []
-                for item in pool.imap_unordered(_scan_file_worker, args, chunksize=_map_chunksize(len(args), opts.jobs)):
-                    res.append(item)
-                    scanned_count += 1
-                    if progress is not None:
-                        progress.tick(hop_no, scanned_count)
-            finally:
-                Path(sym_path).unlink(missing_ok=True)
+            res = _scan_chunk_parallel(chunk, scan_files, pool, opts, tick)
         else:
-            automaton_obj = automaton.build(chunk)
-            res = []
-            for i, (relpath, abspath) in enumerate(scan_files, start=1):
-                res.append(_scan_one(relpath, str(abspath), automaton_obj,
-                                     opts.lang_map, fallback,
-                                     cache=file_cache, enc_memo=enc_memo,
-                                     decode_cache=decode_cache,
-                                     fast=opts.fast_encoding))
-                scanned_count += 1
-                if progress is not None:
-                    progress.tick(hop_no, scanned_count)
+            res = _scan_chunk_serial(chunk, scan_files, opts, fallback,
+                                     file_cache, enc_memo, decode_cache, tick)
         for relpath, enc, replaced, language, dialect, found in res:
             file_meta_by_relpath.setdefault(relpath, (enc, replaced, language, dialect))
             hits_by_relpath.setdefault(relpath, []).extend(found)
