@@ -1,4 +1,40 @@
-# grep_analyzer コード健全性 診断レポート（フェーズ1）
+# grep_analyzer コード健全性 診断レポート（フェーズ1）＋実装結果（フェーズ2）
+
+## 実装結果サマリ（フェーズ2・2026-06-20）
+
+11 コミットで実装。全工程で pytest `739 passed, 10 skipped` を維持（純粋リファクタ）。
+
+**実装済（約40件）:**
+- コメント是正: CMT-fixedpoint-01（矛盾コメント）, CMT-fixedpoint-02, CMT-toplevelcore-05, CMT-toplevelcore-01/03（provenance）
+- classifiers: SIMPL-classifiers-01（DFS3重複）, -02（extract_tree骨格）, -03（mask×6）, -04（node_text×29）, -05（死にパラメータ）, NAME-classifiers-01/02/03
+- T1 対称二重化: STRUCT-toplevelcore-01（provenance）, SIMPL-fixedpoint-02（ingest）, STRUCT-snippetpatterns-01（clamp）
+- fixedpoint: SIMPL-fixedpoint-01, STRUCT-fixedpoint-01（_scan_one）, -02（scan_hop）, -03（union）, -04（import位置）, NAME-fixedpoint-01
+- 構造分割: STRUCT-toplevelorch-01（cli _validate_args）, STRUCT-toplevelcore-02（decode_cache get）, STRUCT-snippetpatterns-03（ts_span）
+- 簡素化/命名: SIMPL-toplevelorch-02/04, SIMPL-toplevelcore-02, SIMPL-toplevelcore-01（blank集約）, NAME-toplevelorch-01/02/03, NAME-toplevelcore-01/02/03/04, NAME-fixedpoint-03, NAME-snippetpatterns-01/02, SIMPL/CMT-snippetpatterns-01
+
+**見送り（挙動変更のため要相談）:**
+- SIMPL-snippetpatterns-02 / WARN-snippetpatterns-01: `re.IGNORECASE` 除去は大文字キーワードでマッチ集合が変わる挙動変更
+- SIMPL-toplevelcore-03（classify テーブル化）: module-global の monkeypatch 遅延束縛シームを壊す
+- STRUCT-toplevelorch-03 / SIMPL-toplevelorch-01（walk 統合）: 意図的複製でパリティテスト保護・binary窓が8K/64Kと異なる挙動変更
+- CMT-classifiers-03（re.VERBOSE）: 既存パターンの空白意味が変わる正規表現挙動リスク
+
+**見送り（低価値・非該当、理由付き）:**
+- SIMPL-toplevelcore-04: 1行スライスの抽出は無益＋直importは文書化済fast-path seam
+- SIMPL-snippetpatterns-04: `# noqa: F401` 付き意図的 re-export
+- SIMPL-fixedpoint-03: `_scan_file` はテスト使用中の互換entry（デッドでない）
+- SIMPL-snippetpatterns-05: `GROOVY_LINE_CAP` は実使用中（監査のスコープ限定による誤検出）
+- STRUCT-classifiers-02（registry移動）: base へは循環import不可・`__init__` registryは慣例的
+- STRUCT-classifiers-03（regex位置）・STRUCT-toplevelorch-04（progress）・STRUCT-toplevelcore-03（spill境界）・NAME-fixedpoint-02: 低価値の整形
+- CHG-fixedpoint-01: 欠陥でなく将来リファクタへの注意書き（変更不要）
+- CMT「正当WHY」群: 保持（並行/キャッシュ/降格契約の必須文書）
+
+**未着手（大規模・要判断）:**
+- STRUCT-classifiers-01（ast_base 分離）: 機械的だが test 10ファイル含む広域 import 変更
+- STRUCT-toplevelorch-02（pipeline.run の _build_direct_hits 抽出）: 最大の価値だが cur_ctx 状態機械を含む最高リスク
+
+---
+
+
 
 - 日付: 2026-06-20
 - 対象: `src/grep_analyzer/`（57 ファイル / 約5,400 LOC、`vendor/` 除く）
