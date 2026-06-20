@@ -48,7 +48,7 @@ def test_tsx_category():
 
 
 def test_bindings_at_line_行交差全件を決定的順で返す():
-    from grep_analyzer.classifiers.ts_classifier import bindings_at_line, parse_tree
+    from grep_analyzer.classifiers.ast_base import bindings_at_line, parse_tree
     root = parse_tree("java", "class S { int vv = a.getName(); }\n")
     types = {"field_declaration", "method_invocation"}
     got = [n.type for n in bindings_at_line(root, 1, types)]
@@ -57,7 +57,7 @@ def test_bindings_at_line_行交差全件を決定的順で返す():
 
 
 def test_bindings_at_line_該当なしは空list():
-    from grep_analyzer.classifiers.ts_classifier import bindings_at_line, parse_tree
+    from grep_analyzer.classifiers.ast_base import bindings_at_line, parse_tree
     root = parse_tree("java", "class S {}\n")
     assert bindings_at_line(root, 1, {"method_invocation"}) == []
 
@@ -84,15 +84,15 @@ def test_コード同居行はコメントにせずコード分類():
 def test_巨大ソースはparseを諦めその他lowへ決定的降格(monkeypatch):
     # 60GB 想定で --max-file-bytes を上げた際の巨大 minified 1 ファイルで worker OOM を防ぐ。
     # 上限超は _ParseFailed→("その他","low") に決定的降格する（#K）。
-    from grep_analyzer.classifiers import ts_classifier
-    monkeypatch.setattr(ts_classifier, "_MAX_PARSE_BYTES", 100)
+    from grep_analyzer.classifiers import ast_base, ts_classifier
+    monkeypatch.setattr(ast_base, "_MAX_PARSE_BYTES", 100)
     big = "class A { int x = 1; }\n" + "// pad " * 50    # >100 bytes
     assert len(big.encode("utf-8")) > 100
     assert ts_classifier.classify_ts("java", big, 1) == ("その他", "low")
 
 
 def test_上限以内のソースは通常どおりAST分類される(monkeypatch):
-    from grep_analyzer.classifiers import ts_classifier
-    monkeypatch.setattr(ts_classifier, "_MAX_PARSE_BYTES", 10_000)
+    from grep_analyzer.classifiers import ast_base, ts_classifier
+    monkeypatch.setattr(ast_base, "_MAX_PARSE_BYTES", 10_000)
     cat, conf = ts_classifier.classify_ts("java", "class A { int x = 1; }\n", 1)
     assert conf == "high"

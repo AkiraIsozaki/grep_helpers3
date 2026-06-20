@@ -9,7 +9,7 @@ public API（extract_var_symbols / mask_literals / extract_chase_symbols）を�
 from grep_analyzer.classifiers import _AST_CHASERS, _CHASERS
 from grep_analyzer.classifiers.shell_chaser import _extract_var_symbols as _shell_extract
 from grep_analyzer.classifiers.sql_chaser import _extract_var_symbols as _sql_extract
-from grep_analyzer.classifiers.ts_classifier import parse_tree
+from grep_analyzer.classifiers.ast_base import parse_tree
 from grep_analyzer.model import ChaseSymbols
 
 # 行ベース chaser への入力行の最大長である。これを超える行は先頭のみを見る。
@@ -65,7 +65,7 @@ def extract_chase_symbols_tree(language: str, text: str, lineno: int) -> ChaseSy
     """text を parse して AST chaser で抽出（seed/absorb 用）。非 AST 言語/parse 失敗は空。"""
     if language not in _AST_CHASERS:
         return ChaseSymbols()
-    from grep_analyzer.classifiers.ts_classifier import _ParseFailed
+    from grep_analyzer.classifiers.ast_base import _ParseFailed
     try:
         root = parse_tree(language, text)
     except _ParseFailed:

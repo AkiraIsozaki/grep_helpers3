@@ -21,7 +21,7 @@ def _count_parses(monkeypatch):
 
 
 def test_parse_tree_cache_は同一言語で1回だけparseする(monkeypatch):
-    from grep_analyzer.classifiers.ts_classifier import parse_tree
+    from grep_analyzer.classifiers.ast_base import parse_tree
 
     src = "class C {\n int a = 1;\n int b = 2;\n}\n"
     cache: dict = {}
@@ -33,7 +33,7 @@ def test_parse_tree_cache_は同一言語で1回だけparseする(monkeypatch):
 
 
 def test_parse_tree_cache_未指定は毎回parseする(monkeypatch):
-    from grep_analyzer.classifiers.ts_classifier import parse_tree
+    from grep_analyzer.classifiers.ast_base import parse_tree
 
     src = "class C {\n int a = 1;\n}\n"
     calls = _count_parses(monkeypatch)
@@ -48,7 +48,7 @@ def test_parse_tree_cache_は言語キーで別木を保持する():
     特に typescript（host_source=恒等）と angular_inline（host_source で inline
     template 以外を空白化）は同一ソースから別の木になる必要がある。
     """
-    from grep_analyzer.classifiers.ts_classifier import parse_tree
+    from grep_analyzer.classifiers.ast_base import parse_tree
 
     src = ('@Component({ template: `<b (click)="v=1">x</b>` })\n'
            'export class C { v = 0; }\n')

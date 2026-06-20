@@ -2,8 +2,7 @@
 
 `handle_js_binding` / `_BINDING` は typescript_chaser と共有する。
 """
-from grep_analyzer.classifiers.base import node_text
-from grep_analyzer.classifiers.ts_classifier import run_field_chase
+from grep_analyzer.classifiers.ast_base import node_text, run_field_chase
 
 _BINDING = {"lexical_declaration", "variable_declaration",
             "assignment_expression", "augmented_assignment_expression",

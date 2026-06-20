@@ -20,7 +20,7 @@ from pathlib import Path
 from grep_analyzer import automaton
 from grep_analyzer.chase import extract_chase_symbols_from_root
 from grep_analyzer.classifiers import _AST_CHASERS
-from grep_analyzer.classifiers.ts_classifier import parse_tree
+from grep_analyzer.classifiers.ast_base import parse_tree
 from grep_analyzer.dispatch import LANG_SAMPLE_BYTES, detect_language, detect_shell_dialect
 from grep_analyzer.embed_preprocess import inline_template_spans
 from grep_analyzer.encoding import DEFAULT_FALLBACK, decode_bytes, decode_with_memo

@@ -6,8 +6,7 @@
 
 import re
 
-from grep_analyzer.classifiers.base import node_text
-from grep_analyzer.classifiers.ts_classifier import run_field_chase
+from grep_analyzer.classifiers.ast_base import node_text, run_field_chase
 
 _BINDING = {"local_variable_declaration", "field_declaration", "resource",
             "assignment_expression", "method_invocation", "method_declaration"}

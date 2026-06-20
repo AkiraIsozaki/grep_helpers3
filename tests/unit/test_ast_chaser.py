@@ -1,5 +1,5 @@
 """AST chaser（python/javascript/typescript/java/c/jsp/proc）field-directed 抽出（spec §6.5・§3.3・§3.4）。"""
-from grep_analyzer.classifiers.ts_classifier import parse_tree
+from grep_analyzer.classifiers.ast_base import parse_tree
 from grep_analyzer.model import ChaseSymbols
 
 
@@ -274,7 +274,7 @@ def test_構文エラー直後の正当な宣言を取りこぼさない():
     独立したノードとして保持されるため、bindings_at_line が行番号で絞って取得でき
     シンボルを取りこぼさない。
     """
-    from grep_analyzer.classifiers.ts_classifier import parse_tree
+    from grep_analyzer.classifiers.ast_base import parse_tree
     from grep_analyzer.classifiers.c_chaser import extract_tree as c_extract
     from grep_analyzer.classifiers.java_chaser import extract_tree as java_extract
 

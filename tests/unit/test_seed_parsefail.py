@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from grep_analyzer.classifiers import ts_classifier
+from grep_analyzer.classifiers import ast_base
 from grep_analyzer.diagnostics import Diagnostics
 from grep_analyzer.fixedpoint import EngineOptions
 from grep_analyzer.fixedpoint._seed import initialize_state
@@ -16,7 +16,7 @@ def _seed_hit(file):
 
 
 def test_parse上限超のseedファイルでクラッシュせず空抽出に降格(tmp_path, monkeypatch):
-    monkeypatch.setattr(ts_classifier, "_MAX_PARSE_BYTES", 50)
+    monkeypatch.setattr(ast_base, "_MAX_PARSE_BYTES", 50)
     src = tmp_path / "Big.java"
     src.write_text("class A { int x = 1; }\n" + "// pad\n" * 20, "utf-8")  # >50 bytes
     opts = EngineOptions()

@@ -13,7 +13,7 @@ from grep_analyzer.chase import (
     extract_chase_symbols_from_root,
 )
 from grep_analyzer.classifiers import _AST_CHASERS
-from grep_analyzer.classifiers.ts_classifier import _ParseFailed, parse_tree
+from grep_analyzer.classifiers.ast_base import _ParseFailed, parse_tree
 from grep_analyzer.diagnostics import Diagnostics
 from grep_analyzer.embed_preprocess import effective_language
 from grep_analyzer.fixedpoint._ingest import ingest_one

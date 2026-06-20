@@ -5,8 +5,7 @@ ASTChaser プロトコルに準拠する。parse は呼出側が行う。
 """
 import re
 
-from grep_analyzer.classifiers.base import node_text
-from grep_analyzer.classifiers.ts_classifier import run_field_chase
+from grep_analyzer.classifiers.ast_base import node_text, run_field_chase
 
 _BINDING = {"assignment", "augmented_assignment", "decorated_definition"}
 _CONST_RE = re.compile(r"^[A-Z_][A-Z0-9_]+$")

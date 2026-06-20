@@ -167,7 +167,7 @@ def test_extract_chase_symbols_tree_非AST言語は空():
 
 def test_extract_chase_symbols_from_root_js():
     from grep_analyzer.chase import extract_chase_symbols_from_root
-    from grep_analyzer.classifiers.ts_classifier import parse_tree
+    from grep_analyzer.classifiers.ast_base import parse_tree
     cs = extract_chase_symbols_from_root("javascript", parse_tree("javascript", "const A = 1;\n"), 1)
     assert cs.constants == ("A",)
 

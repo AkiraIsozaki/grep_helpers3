@@ -5,7 +5,7 @@ block 等に到達した場合は直近 statement を採用する。
 ERROR/MISSING は選択ノードの部分木のみで判定（祖先は見ない）。
 """
 
-from grep_analyzer.classifiers.ts_classifier import node_at_line, parse_tree
+from grep_analyzer.classifiers.ast_base import node_at_line, parse_tree
 from grep_analyzer.embed_preprocess import host_grammar
 from grep_analyzer.proc_preprocess import exec_spans
 
