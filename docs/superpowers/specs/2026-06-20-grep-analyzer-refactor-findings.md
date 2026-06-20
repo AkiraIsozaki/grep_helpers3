@@ -28,9 +28,9 @@
 - CHG-fixedpoint-01: 欠陥でなく将来リファクタへの注意書き（変更不要）
 - CMT「正当WHY」群: 保持（並行/キャッシュ/降格契約の必須文書）
 
-**未着手（大規模・要判断）:**
-- STRUCT-classifiers-01（ast_base 分離）: 機械的だが test 10ファイル含む広域 import 変更
-- STRUCT-toplevelorch-02（pipeline.run の _build_direct_hits 抽出）: 最大の価値だが cur_ctx 状態機械を含む最高リスク
+**実装済（大規模構造・追加2件）:**
+- STRUCT-classifiers-01（ast_base 分離）: AST走査/parse基盤を ast_base へ分離、importer 16箇所を追随
+- STRUCT-toplevelorch-02（pipeline.run の _direct_hits_for_keyword 抽出）: cur_ctx 状態機械を分離、golden で挙動不変担保
 
 ---
 
