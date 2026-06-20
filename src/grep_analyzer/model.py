@@ -17,18 +17,19 @@ class ChaseSymbols:
     setters: tuple[str, ...] = ()
 
 
-def dedup_symbols(consts, vars_, getters, setters) -> ChaseSymbols:
+def dedup_symbols(constants, vars_, getters, setters) -> ChaseSymbols:
     """出現順を保ちつつ重複を除いて ChaseSymbols を組む。
 
     1 行複数束縛・連鎖代入の二重取り対策。const に出た名前は vars から落とす
     （定数の方を優先）。各 chaser（python/javascript/typescript）が共有する。
     """
-    def uniq(xs):
+    def ordered_uniq(xs):
         seen = set()
         return tuple(x for x in xs if not (x in seen or seen.add(x)))
-    cset = set(consts)
-    return ChaseSymbols(uniq(consts), uniq(v for v in vars_ if v not in cset),
-                        uniq(getters), uniq(setters))
+    cset = set(constants)
+    return ChaseSymbols(ordered_uniq(constants),
+                        ordered_uniq(v for v in vars_ if v not in cset),
+                        ordered_uniq(getters), ordered_uniq(setters))
 
 
 TSV_COLUMNS = [

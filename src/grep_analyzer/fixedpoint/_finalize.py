@@ -16,7 +16,7 @@ _REF_KIND = {"constant": "indirect:constant", "var": "indirect:var",
              "getter": "indirect:getter", "setter": "indirect:setter"}
 
 
-def _live_edges(state: ChaseState):
+def _uncapped_edges(state: ChaseState):
     """capped シンボルを端点に持たないエッジ列を 1 度だけ materialize する。
 
     #G: capped は scan 除外だけでなく provenance からも一貫排除する。従来は child が
@@ -34,7 +34,7 @@ def build_indirect_hits(state: ChaseState) -> list[Hit]:
     """edge_store を走査し indirect Hit 列を決定的に構築する。"""
     opts = state.options
     diag = state.diagnostics
-    edges = _live_edges(state)
+    edges = _uncapped_edges(state)
     for p, c in edges:
         state.graph.add_edge(p, c)
 

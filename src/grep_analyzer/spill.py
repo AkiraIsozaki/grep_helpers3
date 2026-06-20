@@ -16,11 +16,11 @@ _ESC = {"\\": "\\\\", "\t": "\\t", "\n": "\\n", "\r": "\\r"}
 _UNESC = {"\\\\": "\\", "\\t": "\t", "\\n": "\n", "\\r": "\r"}
 
 
-def _enc(s: str) -> str:
+def _escape(s: str) -> str:
     return "".join(_ESC.get(ch, ch) for ch in s)
 
 
-def _dec(s: str) -> str:
+def _unescape(s: str) -> str:
     out = []
     i = 0
     while i < len(s):
@@ -37,15 +37,15 @@ def _dec(s: str) -> str:
 
 def serialize_edge(p: Occurrence, c: Occurrence) -> str:
     """1 エッジを 6 フィールドのタブ区切り1行へ変換する（制御文字エスケープ）。"""
-    return "\t".join((_enc(p.symbol), _enc(p.relpath), str(p.lineno),
-                      _enc(c.symbol), _enc(c.relpath), str(c.lineno)))
+    return "\t".join((_escape(p.symbol), _escape(p.relpath), str(p.lineno),
+                      _escape(c.symbol), _escape(c.relpath), str(c.lineno)))
 
 
 def parse_edge(line: str) -> tuple[Occurrence, Occurrence]:
     """serialize_edge の逆変換（制御文字を含めて round-trip する）。"""
     f = line.rstrip("\n").split("\t")
-    return (Occurrence(_dec(f[0]), _dec(f[1]), int(f[2])),
-            Occurrence(_dec(f[3]), _dec(f[4]), int(f[5])))
+    return (Occurrence(_unescape(f[0]), _unescape(f[1]), int(f[2])),
+            Occurrence(_unescape(f[3]), _unescape(f[4]), int(f[5])))
 
 
 class EdgeStore:

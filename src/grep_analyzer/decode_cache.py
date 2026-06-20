@@ -78,7 +78,8 @@ class DecodeCache:
         except OSError:
             return os.fspath(abspath)
 
-    def _stat(self, real: str):
+    def _file_sig(self, real: str):
+        """ファイル署名 (mtime_ns, size) を返す。存在しなければ None を返す。"""
         try:
             st = os.stat(real)
         except OSError:
@@ -99,7 +100,7 @@ class DecodeCache:
 
     def get(self, abspath: str):
         real = self._canon(abspath)
-        sig = self._stat(real)
+        sig = self._file_sig(real)
         if sig is None:
             return None
         path = self._artifact_path(real, sig)
@@ -148,7 +149,7 @@ class DecodeCache:
         # 「新 sig に旧本文」の stale 化を防ぐ（L1）。未指定時は従来どおり put 時点で stat。
         real = self._canon(abspath)
         if sig is None:
-            sig = self._stat(real)
+            sig = self._file_sig(real)
         if sig is None:
             return
         text, enc, replaced = meta[0], meta[1], meta[2]

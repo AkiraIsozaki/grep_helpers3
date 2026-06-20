@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 
 from grep_analyzer import __version__
+from grep_analyzer.budget import _ITEMS_PER_MB
 from grep_analyzer.model import TSV_COLUMNS, Hit, sort_key
 from grep_analyzer.tsv import neutralize_formula, sanitize_field
 
@@ -169,8 +170,7 @@ def finalize(out_dir: "Path", keyword: str, rows: "list[Hit]", opts,
         "total_rows": n, "data_sha256": data_sha,
         "tool_version": __version__,
         "max_rows_per_part": opts.max_rows_per_part,
-        "items_per_mb": __import__(
-            "grep_analyzer.budget", fromlist=["_ITEMS_PER_MB"])._ITEMS_PER_MB,
+        "items_per_mb": _ITEMS_PER_MB,
         "parts": parts_meta, "tool": "grep_analyzer", "spec_phase": "3",
     }
     if inputs_fingerprint is not None:            # resume の入力指紋照合用（H1）

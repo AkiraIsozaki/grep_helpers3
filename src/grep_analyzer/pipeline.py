@@ -252,7 +252,7 @@ def run(
         # decode キャッシュの put 失敗（disk full 等）を可視化する（L-1）。
         # 失敗しても出力は正しい（再 decode に降格するだけ）が、キャッシュが効かず
         # 遅くなるため気づけるようにする。main process 分のみ（worker 分は別プロセス）。
-        if getattr(decode_cache, "put_failures", 0):
+        if decode_cache.put_failures:
             print(f"[grep_analyzer] 警告: decode キャッシュ書込が "
                   f"{decode_cache.put_failures} 件失敗しました（disk full 等? "
                   f"--decode-cache-dir の空き容量を確認してください）", file=sys.stderr)
