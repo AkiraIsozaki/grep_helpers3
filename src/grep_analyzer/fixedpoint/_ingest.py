@@ -47,9 +47,12 @@ def ingest_one(state: ChaseState, parent: Occurrence, language: str,
                 continue
             state.symbol_kind.setdefault(symbol, kinds.get(symbol, default_kind))
             state.symbol_hop.setdefault(symbol, hop)
-            lst = state.introducers.setdefault(symbol, [])
-            if parent not in lst:
-                lst.append(parent)
+            # リスト線形 membership は hot symbol（数万箇所から導入される共通定数名）で
+            # O(n²) になる。判定は併走 set・順序はリスト（先着順＝出力順の正）を保つ。
+            seen = state.introducer_seen.setdefault(symbol, set())
+            if parent not in seen:
+                seen.add(parent)
+                state.introducers.setdefault(symbol, []).append(parent)
             if symbol not in done:
                 active.add(symbol)
 
@@ -62,7 +65,8 @@ def absorb_results(state: ChaseState, pass_results, scan_chase: set[str],
     """
     diag = state.diagnostics
     for relpath, enc, replaced, language, dialect, found in pass_results:
-        state.encoding_of.setdefault(relpath, (enc, replaced))
+        if enc is not None:                   # None＝読込失敗の番兵（メタ未確定は記録しない）
+            state.encoding_of.setdefault(relpath, (enc, replaced))
         if replaced and relpath not in state.replaced_logged:
             # indirect 経路の decode_replaced も sanitize_field を通す（M2 完全化）。
             # diagnostics の detail 行は `{category}\t{message}` 形式なので、relpath 内の

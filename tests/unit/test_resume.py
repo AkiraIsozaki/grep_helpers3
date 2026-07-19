@@ -135,3 +135,13 @@ def test_max_rows_per_part変更で未完了(tmp_path):
     # A1: part 分割数が変わる設定変更は resume 再実行すべき
     finalize(tmp_path, "K", _mk(3), _opts(max_rows_per_part=1_048_575))
     assert resume.is_complete(tmp_path, "K", _opts(max_rows_per_part=2)) is False
+
+
+def test_stoplist読込失敗の指紋は黙ってstoplistなしへ縮退しない(tmp_path):
+    # OSError→b"" だと「stoplist なし」と同一指紋になり、stoplist 未適用の旧出力を
+    # resume が完了扱いで採用してしまう。読めない stoplist は fail-stop にする。
+    from grep_analyzer import resume as resume_mod
+    opts = _opts(stoplist_path=tmp_path / "dir_as_stoplist")
+    (tmp_path / "dir_as_stoplist").mkdir()   # read_bytes が IsADirectoryError になる
+    with pytest.raises(OSError):
+        resume_mod.compute_inputs_fingerprint(b"x", tmp_path, opts)

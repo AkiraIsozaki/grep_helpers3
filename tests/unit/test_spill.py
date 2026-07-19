@@ -88,3 +88,22 @@ def test_budget0は1件目でスピルし同一(tmp_path):
     assert s.spilled is True and s.in_memory_len() == 0
     assert list(s.sorted_unique()) == [e]
     s.close()
+
+
+def test_スピル済sorted_uniqueは外部マージでも同一集合同一順序(tmp_path, monkeypatch):
+    # スピル後の確定は全件を set に読み戻さず、チャンクソート＋マージで
+    # sorted(set(edges)) と同一の列を返す（メモリ有界のままスピルの目的を保つ）。
+    import grep_analyzer.spill as spill_mod
+    monkeypatch.setattr(spill_mod, "_SORT_CHUNK_EDGES", 3)   # 複数 run を強制
+    s = EdgeStore(tmp_path, MemoryBudget(None))
+    s._force_spill_threshold = 1
+    edges = [(Occurrence(f"S{i % 5}", f"s{i % 7}.c", i % 3),
+              Occurrence("H", "h.c", 9)) for i in range(40)]
+    for p, c in edges:
+        s.add(p, c)
+    assert s.spilled is True
+    assert list(s.sorted_unique()) == sorted(set(edges))
+    assert list(s.sorted_unique()) == sorted(set(edges))     # 2 度呼んでも同値（再走査可）
+    s.close()
+    # run 一時ファイルを残さない
+    assert list(tmp_path.glob("ga_edges_*run*")) == []

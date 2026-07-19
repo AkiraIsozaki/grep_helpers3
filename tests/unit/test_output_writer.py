@@ -180,3 +180,27 @@ def test_partNを名に持つ別keyword出力を消さない(tmp_path):
     assert (tmp_path / "foo.part5.tsv").exists()       # 別 keyword の出力は無傷であるべき
     assert (tmp_path / "foo.part5.manifest.json").exists()
     assert (tmp_path / "foo.tsv").exists()             # 自身の出力は生成
+
+
+def test_長大keywordでも一時ファイル名がNAME_MAXを超えない(tmp_path):
+    # temp 名は "{name}.{rand}.tmp" 形式で、keyword が長いと mkstemp が
+    # ENAMETOOLONG になる。prefix は切り詰めても一意性は mkstemp が担保する。
+    keyword = "K" * 240                       # 最終名 244B は NAME_MAX 内・旧 temp 名は超過
+    finalize(tmp_path, keyword, [_hit("a.java", 1, "s")], _opts())
+    assert (tmp_path / f"{keyword}.tsv").exists()
+
+
+def test_data_rows_sha256はblob版sha256と同値():
+    # sha はストリーミングで畳むが、_blob_from_data_rows(rows) の sha256 と
+    # バイト同値であること（resume の完了判定と書込側の一致契約）。
+    import hashlib
+    from grep_analyzer.output_writer import _blob_from_data_rows, data_rows_sha256
+    cases = [
+        [],
+        [""],
+        ["a\tb", "c"],
+        ["日本語\t行", "サロゲート\udc95混じり", ""],
+    ]
+    for rows in cases:
+        expected = hashlib.sha256(_blob_from_data_rows(rows)).hexdigest()
+        assert data_rows_sha256(rows) == expected, rows

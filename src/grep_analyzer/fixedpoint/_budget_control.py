@@ -12,6 +12,17 @@ from grep_analyzer import budget as _budget
 from grep_analyzer.fixedpoint._state import ChaseState
 
 
+def _capped_keep_count(max_symbols: int, budget) -> int:
+    """予算内に収まる最大の keep_count を閉形式で返す。
+
+    estimate_items(k, 0, k) = 2k なので「exceeded(2k) が偽になる最大の k」は
+    item_budget // 2。1 ずつ減算する逐次探索（O(max_symbols)）と同値である。
+    """
+    if budget.unlimited:
+        return max_symbols
+    return min(max_symbols, budget.item_budget // 2)
+
+
 def apply_global_cap(state: ChaseState):
     """シンボル集合を memory_limit / max_symbols で決定的に絞り込む。"""
     diag = state.diagnostics
@@ -19,11 +30,7 @@ def apply_global_cap(state: ChaseState):
     live = sorted(state.chase_active | state.chase_done
                   | state.terminal_active | state.terminal_done,
                   key=lambda s: (state.symbol_hop.get(s, 0), len(s), s))
-    keep_count = opts.max_symbols
-    if not state.budget.unlimited:
-        while keep_count > 0 and state.budget.exceeded(_budget.estimate_items(
-                n_symbols=keep_count, n_edges=0, n_intro=keep_count)):
-            keep_count -= 1
+    keep_count = _capped_keep_count(opts.max_symbols, state.budget)
     if len(live) <= keep_count:
         return
     for s in live[keep_count:]:

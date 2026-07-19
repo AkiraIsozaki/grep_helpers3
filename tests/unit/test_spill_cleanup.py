@@ -47,3 +47,23 @@ def test_自PIDの生存スピルも保全する_自己破壊防止(tmp_path):
     mine.write_text("x\n", encoding="utf-8")
     spill.cleanup_stale_edge_files(tmp_path)
     assert mine.exists(), "生存中の自 PID スピルを起動 cleanup が消してはならない"
+
+
+def test_PID再利用の残骸はstarttime不一致でstale扱いする(tmp_path):
+    # 生存 PID でも starttime が異なれば「死んだ run の残骸を無関係プロセスが
+    # 誤保全している」状態なので掃除する。自プロセスの PID を借りて再現する。
+    import os
+    from grep_analyzer.spill import _proc_starttime, cleanup_stale_edge_files
+    pid = os.getpid()
+    start = _proc_starttime(pid)
+    if start is None:
+        import pytest
+        pytest.skip("/proc が無い環境では starttime 判定は無効")
+    stale = tmp_path / f"ga_edges_{pid}-{int(start) + 1}_x.tsv"
+    stale.write_text("", "utf-8")
+    live = tmp_path / f"ga_edges_{pid}-{start}_y.tsv"
+    live.write_text("", "utf-8")
+    removed = cleanup_stale_edge_files(tmp_path)
+    assert removed == 1
+    assert not stale.exists()
+    assert live.exists()

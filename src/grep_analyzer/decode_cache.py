@@ -29,17 +29,28 @@ _TMP_PREFIX = "ga_dca_"
 
 
 class DecodeCache:
+    """decode 結果 (text, enc, replaced) の永続キャッシュ本体である。
+
+    get はソース署名 (mtime_ns, size) の一致・本文長 blen の一致を検証し、
+    破損/陳腐は miss へ降格する。put は「絶対落とさない」契約で失敗を数えるだけにする。
+    """
+
     def __init__(self, cache_dir: "Path | None", namespace: str = "",
-                 max_bytes: "int | None" = None) -> None:
+                 max_bytes: "int | None" = None, jobs: int = 1) -> None:
         self._dir = Path(cache_dir) if cache_dir is not None \
             else Path(tempfile.mkdtemp(prefix="ga_decode_"))
         self._dir.mkdir(parents=True, exist_ok=True)
         self._ns = namespace
         self._max_bytes = max_bytes
         self.put_failures = 0           # put が OSError（disk full 等）で no-op になった回数
-        # 概算常駐バイト。これが上限を超えたときだけ実走査の退避を起こす（put 毎の全走査＝
-        # O(n^2) を回避）。既存ディレクトリ再利用時は初期サイズを実測して種にする。
-        self._approx_bytes = self._scan_total() if max_bytes is not None else 0
+        # 並列会計（F3 拡張）: 各プロセスは自分の put しか数えられないため、
+        # 「同期済み実測 + 自分の増分 × jobs」を保守的な総量上限判定に使う。
+        # 全 worker が同じ判定を使えば、どのプロセスも自分の増分が
+        # (max - synced)/jobs を超えた時点で実走査へ同期し、共有ディレクトリの
+        # 実総量は上限を（worker 間の同時 put 分を除き）超えない。
+        self._jobs = max(1, jobs)
+        self._synced_bytes = self._scan_total() if max_bytes is not None else 0
+        self._local_put_bytes = 0
         self._sweep_stale_temp()
 
     def _iter_artifacts(self):
@@ -147,6 +158,7 @@ class DecodeCache:
             return None
 
     def get(self, abspath: str):
+        """abspath の (text, enc, replaced) を返す。ミス・破損・陳腐は None。"""
         real = self._canon(abspath)
         sig = self._file_sig(real)
         if sig is None:
@@ -161,9 +173,16 @@ class DecodeCache:
         if meta.get("blen") != len(body_bytes):
             self._discard(path)              # truncated/torn write を trust しない（#8）
             return None
+        # 退避順（_enforce_budget の mtime 昇順）を FIFO から LRU に近づけるため、
+        # ヒットしたアーティファクトに touch する。失敗しても単なる退避順の劣化。
+        try:
+            os.utime(path)
+        except OSError:
+            pass
         return self._decode_body(path, meta, body_bytes)
 
     def put(self, abspath: str, meta, sig=None) -> None:
+        """decode 結果を原子的に永続化する（失敗は put_failures に数えるだけで落とさない）。"""
         # meta は (text, enc, replaced[, language, dialect])。language/dialect は
         # relpath 依存なのでキャッシュしない（H2）。後方互換のため余分な要素は無視する。
         # sig（呼出側が read した時点の (mtime_ns, size)）を渡すと、独立 re-stat による
@@ -204,9 +223,11 @@ class DecodeCache:
             self.put_failures += 1
             return
         if self._max_bytes is not None:
-            self._approx_bytes += len(body)
-            if self._approx_bytes > self._max_bytes:
-                self._enforce_budget()       # 概算が上限超のときだけ実走査（put 毎の全走査を回避）
+            self._local_put_bytes += len(body)
+            # 自分の増分を jobs 倍した保守的概算が上限を跨いだときだけ実走査する
+            # （put 毎の全走査を回避しつつ、並列時の合計膨張を上限内に抑える）。
+            if self._synced_bytes + self._local_put_bytes * self._jobs > self._max_bytes:
+                self._enforce_budget()
 
     def _enforce_budget(self) -> None:
         """max_bytes 超過時に古い（mtime 昇順）アーティファクトから退避する（R-1）。
@@ -226,6 +247,7 @@ class DecodeCache:
                     total -= size
                 except OSError:
                     pass
-            self._approx_bytes = total       # 概算を実値（退避後）へ同期
+            self._synced_bytes = total       # 概算を実値（退避後）へ同期
+            self._local_put_bytes = 0
         except OSError:
             pass

@@ -82,3 +82,23 @@ def test_degrade_insufficientはmax_passes頭打ちかつ予算超過でTrue():
     assert degrade_insufficient(union, 4, opts=opts, budget=MemoryBudget(0), states=st) is False
     # 無制限予算は常に False
     assert degrade_insufficient(union, 8, opts=opts, budget=MemoryBudget(None), states=st) is False
+
+
+def test_apply_global_capのkeep_countは逐次減算と同値():
+    # keep_count は閉形式 min(max_symbols, item_budget // 2) で求める。
+    # estimate_items(k, 0, k) = 2k の逐次デクリメントと全域で一致すること。
+    from grep_analyzer.budget import MemoryBudget, estimate_items
+
+    def reference(max_symbols, budget):
+        keep = max_symbols
+        while keep > 0 and budget.exceeded(
+                estimate_items(n_symbols=keep, n_edges=0, n_intro=keep)):
+            keep -= 1
+        return keep
+
+    from grep_analyzer.fixedpoint._budget_control import _capped_keep_count
+    for limit_mb in (0, 1, 2, 5):
+        b = MemoryBudget(limit_mb)
+        for max_symbols in (0, 1, 2, 100, 100_000, 300_000):
+            assert _capped_keep_count(max_symbols, b) == reference(max_symbols, b), \
+                (limit_mb, max_symbols)

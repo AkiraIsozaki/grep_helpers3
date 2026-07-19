@@ -160,3 +160,22 @@ def test_chains_to_は巨大max_depthでも例外を出さず決定的():
     # 呼出文脈（スタック深さ）に依らず結果一定。
     r2 = g.chains_to(prev, max_depth=10 ** 9, max_paths=10, diag=Diagnostics())
     assert r2 == r1
+
+
+def test_chains_to_はtargetへ到達不能な枝を探索せず診断も汚さない():
+    # target の祖先集合で DFS を枝刈りする。到達不能な深い枝は探索されないので、
+    # その枝由来の prov_max_depth 診断も出ない（探索量が到達パス数に比例する保証）。
+    g = ProvenanceGraph()
+    seed = Occurrence("K", "seed.c", 1)
+    g.add_seed(seed)
+    target = Occurrence("T", "t.c", 1)
+    g.add_edge(seed, target)
+    prev = seed
+    for i in range(10):                        # 到達不能な深い鎖（max_depth 超）
+        nxt = Occurrence(f"X{i}", "x.c", i + 1)
+        g.add_edge(prev, nxt)
+        prev = nxt
+    diag = Diagnostics()
+    res = g.chains_to(target, max_depth=2, max_paths=10, diag=diag)
+    assert res == ["K@seed.c:1 -> T@t.c:1"]
+    assert diag.counts().get("prov_max_depth", 0) == 0

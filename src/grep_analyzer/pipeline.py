@@ -177,17 +177,28 @@ def run(
         # namespace は decode_cache_namespace(opts) が fast/fallback/lang_map を畳み込む（C1）。
         decode_cache = make_decode_cache(opts)
 
+        # walk 受理ファイルの (mtime,size) 集約＝ソース状態。resume 指紋に畳み込み、
+        # .grep 不変でもソース編集後は再処理させる（stale 出力の完了誤認防止）。
+        source_state = resume.compute_source_state(files)
+
         # --- 2. keyword 単位 direct 構築（既存ロジックを verbatim 流用） ---
         direct_hits: dict[str, list[Hit]] = {}
         direct_diag: dict[str, Diagnostics] = {}
         resume_skipped: list[str] = []
         kw_fingerprint: dict[str, str] = {}
-        for grep_file in sorted(Path(input_dir).glob("*.grep")):
+        # stem（=keyword）で整列する。フルネーム整列だと stem にドットを含む keyword
+        # （a.grep と a.b.grep）で step 5/6 の sorted(states_by_kw)＝stem 順と食い違う。
+        for grep_file in sorted(Path(input_dir).glob("*.grep"),
+                                key=lambda p: (p.stem, p.name)):
             keyword = grep_file.stem
-            grep_bytes = grep_file.read_bytes()
+            # Windows ツール経由の .grep は UTF-8 BOM 付きで保存され、1 行目の path が
+            # BOM 前置になり missing_source へ落ちる。入力仕様外バイトとして先頭で剥がす
+            # （指紋も剥いだ後の本文で計算し、BOM 有無だけの差で再処理させない）。
+            grep_bytes = grep_file.read_bytes().removeprefix(b"\xef\xbb\xbf")
             # 入力指紋（.grep 本文＋行に影響する opts＋source_root）。resume の完了判定に渡し、
             # finalize で manifest に焼き込む。入力/オプションが変われば再処理させる（H1）。
-            fp = resume.compute_inputs_fingerprint(grep_bytes, source_root, opts)
+            fp = resume.compute_inputs_fingerprint(grep_bytes, source_root, opts,
+                                                   source_state=source_state)
             # resume: 完了済 keyword は direct も states も finalize も行わずスキップ。
             if opts.resume and resume.is_complete(output_dir, keyword, opts, fp):
                 resume_skipped.append(keyword)
@@ -220,7 +231,7 @@ def run(
             files=files, unsafe_rels=unsafe_rels, enc_memo=enc_memo,
             decode_cache=decode_cache)
 
-        # --- 5. finalize（keyword ソート順＝従来 glob 順と同一） ---
+        # --- 5. finalize（keyword ソート順＝step 2 の stem 整列と同一） ---
         src_abs = str(Path(source_root).resolve())
         for kw in sorted(states_by_kw):
             rows = [replace(h, file=f"{src_abs}/{h.file}")

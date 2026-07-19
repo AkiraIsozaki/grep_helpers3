@@ -1,3 +1,5 @@
+"""CLI エントリポイント。引数定義・早期検証・EngineOptions への変換を担う。"""
+
 import argparse
 import codecs
 import os
@@ -54,12 +56,12 @@ def _make_parser() -> argparse.ArgumentParser:
                         help="chain 列挙の最大本数（既定 1000）")
     parser.add_argument("--memory-limit", type=int, default=None, dest="memory_limit_mb",
                         help="決定的メモリ近似に基づく degrade トリガ（MB・既定なし）")
-    g = parser.add_mutually_exclusive_group()
-    g.add_argument("--use-ripgrep", dest="use_ripgrep", action="store_const",
-                   const=True, default=None,
-                   help="ripgrep prefilter を強制 ON（既定は閾値自動判定）")
-    g.add_argument("--no-use-ripgrep", dest="use_ripgrep", action="store_const",
-                   const=False, help="ripgrep prefilter を強制 OFF")
+    ripgrep_group = parser.add_mutually_exclusive_group()
+    ripgrep_group.add_argument("--use-ripgrep", dest="use_ripgrep", action="store_const",
+                               const=True, default=None,
+                               help="ripgrep prefilter を強制 ON（既定は閾値自動判定）")
+    ripgrep_group.add_argument("--no-use-ripgrep", dest="use_ripgrep", action="store_const",
+                               const=False, help="ripgrep prefilter を強制 OFF")
     parser.add_argument("--ripgrep-threshold-bytes", type=int, default=1 << 30,
                         dest="ripgrep_threshold_bytes",
                         help="自動 ON する総バイト閾値（既定 1GiB）")
@@ -115,8 +117,11 @@ def _opts_from(args: argparse.Namespace) -> EngineOptions:
         max_passes=args.max_passes, progress=args.progress,
         resume=args.resume,
         output_encoding=args.output_encoding,
+        # 空指定はヘルプの宣言どおり既定鎖へ復帰する。ここで正規化しないと空 tuple が
+        # seed/scan/finalize の worker まで伝播し decode_bytes 側の防御に頼ることになる。
         encoding_fallback=tuple(
-            s for s in args.encoding_fallback.split(",") if s),
+            s for s in args.encoding_fallback.split(",") if s)
+        or EngineOptions.encoding_fallback,
         max_rows_per_part=args.max_rows_per_part,
         diagnostics_detail_limit=args.diagnostics_detail_limit,
         decode_cache_dir=Path(args.decode_cache_dir) if args.decode_cache_dir else None,
@@ -142,13 +147,14 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
         parser.error(f"--input directory not found: {args.input}")
     if not Path(args.source_root).is_dir():
         parser.error(f"--source-root directory not found: {args.source_root}")
-    # --output が --input/--source-root と同一ディレクトリだと、finalize の TSV/manifest
-    # 書込や旧 manifest 由来の孤児パート削除が既存ソース/入力と衝突し破壊し得る（H6）。
+    # --output が --input/--source-root と同一または配下だと、finalize の TSV/manifest
+    # 書込が既存ソース/入力と衝突し得るうえ、--source-root 配下の場合は 2 回目の run で
+    # walk が自分の TSV を走査対象にしてキーワードが自己ヒットし出力が増殖する（H6）。
     out_real = Path(args.output).resolve()
-    if out_real == Path(args.source_root).resolve():
-        parser.error("--output must not be the same directory as --source-root")
-    if out_real == Path(args.input).resolve():
-        parser.error("--output must not be the same directory as --input")
+    if out_real.is_relative_to(Path(args.source_root).resolve()):
+        parser.error("--output must not be inside --source-root")
+    if out_real.is_relative_to(Path(args.input).resolve()):
+        parser.error("--output must not be inside --input")
     if args.jobs is not None and args.jobs < 1:
         parser.error("--jobs must be >= 1")
     if args.max_depth < 0:
@@ -190,9 +196,13 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
                 parser.error(
                     f"--lang-map invalid pair {pair!r} (expected .ext=lang)")
     # 不正コーデック名は walk+direct+不動点を全部終えた後の finalize 内 LookupError で
-    # 初めて倒れる。全走査前に明示エラーにする（L2）。
+    # 初めて倒れる。全走査前に明示エラーにする（L2）。hex 等の bytes↔bytes コーデックは
+    # lookup が成功するのに open(encoding=...) で落ちるため、text encoding かも確認する
+    # （_is_text_encoding は CPython 標準の CodecInfo 属性）。
     try:
-        codecs.lookup(args.output_encoding)
+        if not codecs.lookup(args.output_encoding)._is_text_encoding:
+            parser.error(
+                f"--output-encoding is not a text encoding: {args.output_encoding!r}")
     except LookupError:
         parser.error(f"--output-encoding unknown codec: {args.output_encoding!r}")
     for codec in (s for s in args.encoding_fallback.split(",") if s):

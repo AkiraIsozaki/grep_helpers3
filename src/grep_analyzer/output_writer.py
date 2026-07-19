@@ -37,20 +37,39 @@ def _canonical_data_blob(ordered: list[Hit]) -> bytes:
     return _blob_from_data_rows([_data_line(h) for h in ordered])
 
 
-def _persisted_data_rows(ordered: list[Hit], enc: str) -> list[str]:
-    """output_encoding で実際に永続化される data 行（非可逆置換を反映）を返す（C3）。
+def _persisted_rows_iter(ordered: list[Hit], enc: str):
+    """output_encoding で実際に永続化される data 行（非可逆置換を反映）を yield する（C3）。
 
     resume は part を output_encoding で読み戻して data_rows を復元する。data_sha256 を
     utf-8 原文で計算すると、cp932 等の lossy 出力で非表現文字が `?` に置換された分だけ
     書込側 sha と resume 側 sha が恒久的に食い違い、完了判定が永久 False になる。
     そこで sha も「encode(enc,replace)→decode(enc)」を通した姿で計算し、resume の復元と
     一致させる。codec は本用途（utf-8/utf-8-sig/cp932/euc-jp/latin-1）ではいずれも文字
-    独立（utf-8-sig の BOM は decode で除去）なので、part 分割をまたいでも結果は同一。
-    lossless（utf-8 系）では恒等＝従来の data_sha256 とバイト不変。
+    独立（utf-8-sig の BOM は encode 付与→decode 除去で行単位でも恒等）なので、
+    全行 join で往復させた旧実装と行単位往復は同一結果。lossless（utf-8 系）では
+    恒等＝従来の data_sha256 とバイト不変。generator にすることで数 GB 級 TSV でも
+    全行 join の巨大 str/bytes を実体化しない。
     """
-    rows = [_data_line(h) for h in ordered]
-    blob = "\n".join(rows).encode(enc, errors="replace")
-    return blob.decode(enc).split("\n")
+    for h in ordered:
+        line = _data_line(h)
+        yield line.encode(enc, errors="replace").decode(enc)
+
+
+def data_rows_sha256(rows) -> str:
+    """データ行 iterable の正規 sha256 を返す（書込側・resume 完了判定が共有する）。
+
+    sha256(_blob_from_data_rows(list(rows))) とバイト同値だが、行を LF 区切りで
+    逐次畳むため出力サイズ分の blob を実体化しない（utf-8 の errors="replace" は
+    文字独立なので行単位 encode と全体 encode は一致する）。
+    """
+    h = hashlib.sha256()
+    first = True
+    for row in rows:
+        if not first:
+            h.update(b"\n")
+        h.update(row.encode("utf-8", errors="replace"))
+        first = False
+    return h.hexdigest()
 
 
 def _rows_from_part_text(text: str) -> list[str]:
@@ -76,8 +95,12 @@ def _rows_from_part_text(text: str) -> list[str]:
 def _atomic_write(path: "Path", data: bytes) -> None:
     """唯一の原子書込プリミティブである（mkstemp->fsync->os.replace で不可分置換）。"""
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent),
-                               prefix=path.name + ".", suffix=".tmp")
+    # prefix は識別の便宜にすぎず、一意性は mkstemp が担保する。長大 keyword で
+    # temp 名（{name}.{rand}.tmp）が NAME_MAX(255B) を超えないよう FS バイト長で
+    # 切り詰める。fsencode/fsdecode（surrogateescape）は SJIS 由来のサロゲート混じり
+    # keyword でも落ちない（マルチバイト途中の切断はサロゲートとして FS へ往復可能）。
+    prefix = os.fsdecode(os.fsencode(path.name)[:120]) + "."
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=prefix, suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
@@ -135,6 +158,11 @@ def _write_manifest(out_dir: "Path", keyword: str, manifest: dict) -> None:
 
 def finalize(out_dir: "Path", keyword: str, rows: "list[Hit]", opts,
              inputs_fingerprint: "str | None" = None) -> None:
+    """keyword の全 Hit を安定ソートし TSV（必要なら part 分割）と manifest を確定する。
+
+    書込は全て原子的（_atomic_write）で、manifest を最後に確定してから旧 run の
+    孤児 part を削除する。inputs_fingerprint は resume の完了判定（H1）に焼き込む。
+    """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     # 新 manifest で上書きする前に、旧 run の part 名を控える（孤児削除に使う・H3）。
@@ -148,8 +176,7 @@ def finalize(out_dir: "Path", keyword: str, rows: "list[Hit]", opts,
     enc = opts.output_encoding
     # data_sha256 は「実際に enc で永続化される姿」で計算する（lossy 出力でも resume が
     # 読み戻した data_rows と一致させ完了判定を成立させる・C3）。lossless では従来と不変。
-    data_sha = hashlib.sha256(
-        _blob_from_data_rows(_persisted_data_rows(ordered, enc))).hexdigest()
+    data_sha = data_rows_sha256(_persisted_rows_iter(ordered, enc))
 
     parts_meta = []
     if nparts == 1:

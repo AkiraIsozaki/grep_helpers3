@@ -2,29 +2,53 @@
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
 from grep_analyzer import __version__
 from grep_analyzer.budget import _ITEMS_PER_MB
-from grep_analyzer.output_writer import _blob_from_data_rows, _rows_from_part_text
+from grep_analyzer.output_writer import _rows_from_part_text, data_rows_sha256
 
 
-def compute_inputs_fingerprint(grep_bytes: bytes, source_root, opts) -> str:
-    """行に影響する入力（.grep 本文・source_root・行を左右する opts・stoplist 内容）の
-    決定的指紋を返す（H1）。
+def compute_source_state(files) -> str:
+    """walk 受理ファイルの (relpath, mtime_ns, size) 集約ハッシュを返す。
+
+    ソース本体の変更（snippet/分類/間接追跡を左右する）を resume の指紋に反映させる。
+    decode_cache が (mtime,size) で自動失効するのと対称の失効条件である。
+    既知の制限: walk 除外（--exclude/サイズ超過等）だが direct ヒットは持つファイルの
+    変更は検知しない（.grep 側の再生成で検知される想定）。
+    """
+    h = hashlib.sha256()
+    for relpath, abspath in files:            # walk は決定的ソート順で列挙する
+        try:
+            st = os.stat(abspath)
+            sig = f"{st.st_mtime_ns}\0{st.st_size}"
+        except OSError:
+            sig = "gone"                      # walk 後に消えた: 消えたこと自体を状態にする
+        h.update(f"{relpath}\0{sig}\n".encode("utf-8", "surrogatepass"))
+    return h.hexdigest()
+
+
+def compute_inputs_fingerprint(grep_bytes: bytes, source_root, opts,
+                               source_state: str = "") -> str:
+    """行に影響する入力（.grep 本文・source_root・ソース状態・行を左右する opts・
+    stoplist 内容）の決定的指紋を返す（H1）。
 
     resume が「前回と入力もオプションも同じ」ことを保証するために使う。出力（per-keyword
     TSV の行）を変えない opts（jobs/progress/spill_dir/decode_cache*/use_ripgrep/
     ripgrep_threshold_bytes/diagnostics_detail_limit/perkw_diag/force_*/resume）は含めない。
     output_encoding/max_rows_per_part は is_complete が個別照合するため重複させない。
+    source_state は compute_source_state の集約ハッシュ（ソース編集後の stale 出力を
+    「完了」と誤認しないため）。
     """
-    try:
-        stoplist = Path(opts.stoplist_path).read_bytes() if opts.stoplist_path else b""
-    except OSError:
-        stoplist = b""
+    # 読込失敗を b"" に縮退させると「stoplist なし」と同一指紋になり、stoplist 未適用の
+    # 旧出力を resume が完了扱いで採用してしまう。CLI が起動時に存在検証済みなので、
+    # ここでの失敗は run 中の消失＝異常であり OSError をそのまま伝播して fail-stop する。
+    stoplist = Path(opts.stoplist_path).read_bytes() if opts.stoplist_path else b""
     payload = {
         "grep": hashlib.sha256(grep_bytes).hexdigest(),
         "source_root": str(Path(source_root).resolve()),
+        "source_state": source_state,
         "stoplist": hashlib.sha256(stoplist).hexdigest(),
         "opts": {
             "max_depth": opts.max_depth,
@@ -49,6 +73,12 @@ def compute_inputs_fingerprint(grep_bytes: bytes, source_root, opts) -> str:
 
 def is_complete(out_dir: Path, keyword: str, opts,
                 inputs_fingerprint: "str | None" = None) -> bool:
+    """keyword の出力が完了済みかを manifest・part 実体・sha 照合で判定する。
+
+    判定条件: (1) manifest 存在・正形、(2) 入力指紋一致、(3) 出力設定
+    （encoding/max_rows_per_part）一致、(4) 全 part 実在・行数一致・data_sha256
+    一致、(5) tool_version / items_per_mb 一致。いずれか不成立は False（再処理）。
+    """
     out_dir = Path(out_dir)
     mpath = out_dir / f"{keyword}.manifest.json"
     if not mpath.is_file():                                   # 条件1
@@ -72,20 +102,28 @@ def is_complete(out_dir: Path, keyword: str, opts,
     if m.get("max_rows_per_part") != opts.max_rows_per_part:
         return False
     enc = m.get("encoding", "utf-8-sig")
-    data_rows: list[str] = []
-    try:
+    # sha は part 単位で読み・ストリーミングで畳む（全 part の data_rows を同時に
+    # 実体化すると完了判定だけで出力サイズ級のメモリを食う）。条件2/3 の不成立は
+    # bad フラグで generator から伝える（sha は捨てられ False になる）。
+    bad: list[bool] = []
+
+    def _iter_part_rows():
         for part in m.get("parts", []):
             f = out_dir / part["name"]
             if not f.is_file():                                   # 条件2
-                return False
+                bad.append(True)
+                return
             rows = _rows_from_part_text(f.read_text(enc))
             if len(rows) != part.get("rows"):                     # 条件3
-                return False
-            data_rows += rows
+                bad.append(True)
+                return
+            yield from rows
+
+    try:
+        sha = data_rows_sha256(_iter_part_rows())
     except (KeyError, TypeError, UnicodeDecodeError, OSError, LookupError):
         return False
-    sha = hashlib.sha256(_blob_from_data_rows(data_rows)).hexdigest()
-    if sha != m.get("data_sha256"):                           # 条件4（書込側と同一関数）
+    if bad or sha != m.get("data_sha256"):                    # 条件4（書込側と同一関数）
         return False
     if m.get("tool_version") != __version__:                  # 条件5
         return False

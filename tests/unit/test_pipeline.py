@@ -190,3 +190,21 @@ def test_同一decode_cache_dirなら2回目のrunは元ソースを再decodeし
                         lambda *a, **k: (calls.__setitem__("n", calls["n"] + 1), real_fm(*a, **k))[1])
     run(inp, tmp_path / "o2", src, _opts())          # 2nd run: source decode served from cache
     assert calls["n"] == 0
+
+
+def test_BOM付きgrepファイルでも1行目のヒットが欠落しない(tmp_path: Path):
+    # Windows ツール経由で保存された .grep は UTF-8 BOM が付き、1 行目の path が
+    # ﻿ 前置で missing_source に落ちる。BOM は入力仕様外バイトとして剥がす。
+    src_root = tmp_path / "src"
+    src_root.mkdir()
+    (src_root / "A.java").write_text("class A { int STATUS_OK = 1; }\n", "utf-8")
+    inp = tmp_path / "input"
+    inp.mkdir()
+    (inp / "STATUS_OK.grep").write_bytes(
+        b"\xef\xbb\xbfA.java:1:class A { int STATUS_OK = 1; }\n")
+    out = tmp_path / "out"
+    rc = run(input_dir=inp, output_dir=out, source_root=src_root)
+    assert rc == 0
+    tsv = (out / "STATUS_OK.tsv").read_text("utf-8-sig").splitlines()
+    assert len(tsv) == 2                      # ヘッダ + 1 行目のヒット
+    assert "missing_source" not in (out / "diagnostics.txt").read_text("utf-8")

@@ -23,7 +23,8 @@ from grep_analyzer.stoplist import SymbolPolicy
 class ChaseState:
     """不動点反復の全状態を保持する。main process が専有する。
 
-    `introducers`: シンボル -> 発見元 Occurrence 群
+    `introducers`: シンボル -> 発見元 Occurrence 群（先着順）
+    `introducer_seen`: introducers の重複判定専用 set（順序はリストが正）
     `symbol_kind`: シンボル -> kind（constant/var/getter/setter）
     `symbol_hop`: シンボル -> 投入 hop 番号（決定性キー）
     `chase_active`/`chase_done`: chase 対象（constant/var）の active/done 集合
@@ -43,6 +44,7 @@ class ChaseState:
     edge_store: EdgeStore
     keyword: str
     introducers: dict[str, list[Occurrence]] = field(default_factory=dict)
+    introducer_seen: dict[str, set[Occurrence]] = field(default_factory=dict)
     symbol_kind: dict[str, str] = field(default_factory=dict)
     symbol_hop: dict[str, int] = field(default_factory=dict)
     chase_active: set[str] = field(default_factory=set)

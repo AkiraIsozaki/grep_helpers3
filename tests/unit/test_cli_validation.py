@@ -71,9 +71,10 @@ def test_不正な数値オプションは明示エラー(tmp_path, opt, val):
 def test_memory_limit0は許容_最大縮退の意図的指定(tmp_path):
     # --memory-limit 0 は priority-1 最大縮退として意図的に許容する（負値のみ拒否）。
     (tmp_path / "in").mkdir()
+    (tmp_path / "src").mkdir()
     rc = cli.main(["--input", str(tmp_path / "in"),
                    "--output", str(tmp_path / "o"),
-                   "--source-root", str(tmp_path), "--memory-limit", "0"])
+                   "--source-root", str(tmp_path / "src"), "--memory-limit", "0"])
     assert rc == 0
 
 
@@ -112,9 +113,11 @@ def test_lang_map不正ペアは黙殺せず明示エラー(tmp_path, spec):
 
 def test_lang_map正当なペアは受理(tmp_path):
     (tmp_path / "in").mkdir()
+    (tmp_path / "src").mkdir()
     rc = cli.main(["--input", str(tmp_path / "in"),
                    "--output", str(tmp_path / "o"),
-                   "--source-root", str(tmp_path), "--lang-map", ".inc=c,.tpl=jsp"])
+                   "--source-root", str(tmp_path / "src"),
+                   "--lang-map", ".inc=c,.tpl=jsp"])
     assert rc == 0
 
 
@@ -165,3 +168,41 @@ def test_不正なencoding_fallbackコーデックは明示エラー(tmp_path):
     with pytest.raises(SystemExit) as ei:
         cli.main(_base(tmp_path) + ["--encoding-fallback", "cp932,bogus-codec"])
     assert ei.value.code != 0
+
+
+def test_outputがsource_root配下は明示エラー(tmp_path):
+    # 2回目の run が自分の TSV を走査対象にして出力が自己増殖するのを防ぐ（包含チェック）。
+    (tmp_path / "in").mkdir()
+    with pytest.raises(SystemExit) as ei:
+        cli.main(["--input", str(tmp_path / "in"),
+                  "--output", str(tmp_path / "src" / "out"),
+                  "--source-root", str(tmp_path)])
+    assert ei.value.code != 0
+
+
+def test_outputがinput配下は明示エラー(tmp_path):
+    (tmp_path / "in").mkdir()
+    (tmp_path / "src").mkdir()
+    with pytest.raises(SystemExit) as ei:
+        cli.main(["--input", str(tmp_path / "in"),
+                  "--output", str(tmp_path / "in" / "out"),
+                  "--source-root", str(tmp_path / "src")])
+    assert ei.value.code != 0
+
+
+def test_output_encodingがバイト系コーデックは明示エラー(tmp_path):
+    # codecs.lookup は成功するが open(encoding=...) で落ちる bytes↔bytes コーデック。
+    (tmp_path / "in").mkdir()
+    (tmp_path / "src").mkdir()
+    with pytest.raises(SystemExit) as ei:
+        cli.main(["--input", str(tmp_path / "in"),
+                  "--output", str(tmp_path / "o"),
+                  "--source-root", str(tmp_path / "src"),
+                  "--output-encoding", "hex"])
+    assert ei.value.code != 0
+
+
+def test_encoding_fallback空指定は既定鎖へ復帰する():
+    opts = cli._build_opts(["--input", "i", "--output", "o", "--source-root", "s",
+                            "--encoding-fallback", ""])
+    assert opts.encoding_fallback == ("cp932", "euc-jp", "latin-1")

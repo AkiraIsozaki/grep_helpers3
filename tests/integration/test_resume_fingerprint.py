@@ -60,3 +60,22 @@ def test_入力もオプションも不変ならresumeはスキップする(tmp_
     calls = _spy_finalize(monkeypatch)
     assert main(a + ["--resume"]) == 0
     assert calls == []                                     # 不変 → 実スキップ（回帰防止）
+
+
+def test_ソース編集後のresumeは完了kwを再処理する(tmp_path, monkeypatch):
+    # .grep が不変でもソース本体が変われば snippet/分類は変わる。decode_cache は
+    # (mtime,size) で自動失効するのに resume だけ stale 出力を「完了」と誤認しないこと。
+    src, inp, _ = _setup(tmp_path)
+    out = tmp_path / "o"
+    a = ["--input", str(inp), "--output", str(out), "--source-root", str(src)]
+    assert main(a) == 0
+
+    java = src / "A.java"
+    java.write_text(
+        "class A{ static final int K1=9; static final int K2=2; }\n", "utf-8")
+    import os
+    st = java.stat()
+    os.utime(java, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
+    calls = _spy_finalize(monkeypatch)
+    assert main(a + ["--resume"]) == 0
+    assert calls == ["K1"]                                 # ソース状態不一致 → 再処理

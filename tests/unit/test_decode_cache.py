@@ -118,3 +118,43 @@ def test_put失敗はput_failuresを加算し例外を伝播しない(tmp_path, 
                         lambda **kw: (_ for _ in ()).throw(OSError("disk full")))
     cache.put(str(src), ("X", "utf-8", False, "c", "bourne"))   # 落ちない
     assert cache.put_failures == 1
+
+
+def _put_body(cache, tmp_path, name, body):
+    f = tmp_path / name
+    f.write_text(body, "utf-8")
+    cache.put(str(f), (body, "utf-8", False))
+    return f
+
+
+def test_並列会計は自プロセス分をjobs倍して上限発動する(tmp_path):
+    # worker 毎の put 会計だと、どの worker も単独で上限に達するまで退避せず、
+    # 実キャッシュが最大 jobs×上限まで膨張する。jobs を掛けた保守的判定で、
+    # 共有ディレクトリの実総量が上限内に収まること（2 インスタンス＝2 worker 模擬）。
+    cache_dir = tmp_path / "cache"
+    body = "x" * 100
+    a = DecodeCache(cache_dir, max_bytes=500, jobs=2)
+    b = DecodeCache(cache_dir, max_bytes=500, jobs=2)
+    for i in range(4):
+        _put_body(a, tmp_path, f"a{i}.txt", body)
+        _put_body(b, tmp_path, f"b{i}.txt", body)
+    total = sum(p.stat().st_size for p in cache_dir.glob("*.dca"))
+    assert total <= 500
+
+
+def test_getヒットはmtimeを更新し退避順がLRUに近づく(tmp_path):
+    import time
+    cache_dir = tmp_path / "cache"
+    cache = DecodeCache(cache_dir, max_bytes=10_000)
+    fa = _put_body(cache, tmp_path, "a.txt", "A" * 100)
+    time.sleep(0.01)
+    _put_body(cache, tmp_path, "b.txt", "B" * 100)
+    time.sleep(0.01)
+    assert cache.get(str(fa)) is not None     # a に触れる → a が最新になる
+    arts = sorted(((p.stat().st_mtime_ns, p) for p in cache_dir.glob("*.dca")))
+    oldest = arts[0][1]
+    newest = arts[-1][1]
+    # 退避は mtime 昇順（oldest 先）なので、直近 get した a が newest 側にあること。
+    a_body = ("A" * 100).encode()
+    assert a_body in newest.read_bytes()
+    assert a_body not in oldest.read_bytes()

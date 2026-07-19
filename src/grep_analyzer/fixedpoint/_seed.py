@@ -60,9 +60,17 @@ def initialize_state(seed_hits: list[Hit], source_root: Path,
         state.graph.add_seed(occ)
         from grep_analyzer.walk import is_contained_relpath, is_within_root
         sp = source_root / s.file
-        if is_contained_relpath(s.file) and sp.is_file() and is_within_root(source_root, sp):
-            if s.file != cur_relpath:
-                raw, sig = read_bytes_with_sig(sp)   # read 時 sig で put（L1）
+        readable = (is_contained_relpath(s.file) and sp.is_file()
+                    and is_within_root(source_root, sp))
+        if readable and s.file != cur_relpath:
+            try:
+                # is_file 後の TOCTOU（消失/権限変化）。direct/scan と同じく run を
+                # 落とさず空抽出へ降格する（read 時 sig で put・L1）。
+                raw, sig = read_bytes_with_sig(sp)
+            except OSError:
+                diag.add("source_read_failed", s.file)
+                readable = False
+            else:
                 cur_text, _, _, cur_lang, cur_dialect = meta_via_decode_cache(
                     enc_memo, decode_cache, str(sp), s.file, raw,
                     opts.lang_map, list(opts.encoding_fallback),
@@ -70,6 +78,7 @@ def initialize_state(seed_hits: list[Hit], source_root: Path,
                 cur_lines = None          # 非 AST 言語の split は必要になるまで遅延する
                 cur_tree_cache = {}
                 cur_relpath = s.file
+        if readable:
             dialect = cur_dialect
             lang = effective_language(cur_lang, cur_text, s.lineno)
             if lang in _AST_CHASERS:

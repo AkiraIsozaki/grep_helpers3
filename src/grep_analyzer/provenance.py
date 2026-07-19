@@ -1,5 +1,6 @@
 """来歴グラフと chain 正規形。単純パスのみ列挙。"""
 
+from bisect import insort
 from dataclasses import dataclass
 
 from grep_analyzer.diagnostics import Diagnostics
@@ -26,6 +27,11 @@ class ProvenanceGraph:
         self._seeds: set[Occurrence] = set()
         self._seed_loc: set[tuple[str, int]] = set()
         self._adj: dict[Occurrence, list[Occurrence]] = {}
+        # _adj のリスト線形走査（membership）は hot ノードで O(k²) になるため、
+        # 重複判定専用の set を併走させる（リスト＝決定的順序の正、set＝判定のみ）。
+        self._adj_seen: dict[Occurrence, set[Occurrence]] = {}
+        # 祖先枝刈り用の逆隣接（child→parents）。add_edge で無効化し遅延再構築する。
+        self._reverse_adj: dict[Occurrence, list[Occurrence]] | None = None
 
     def add_seed(self, occ: Occurrence) -> None:
         """起点（direct 相当）を登録。物理行も seed として記録。"""
@@ -37,11 +43,40 @@ class ProvenanceGraph:
         return (relpath, lineno) in self._seed_loc
 
     def add_edge(self, parent: Occurrence, child: Occurrence) -> None:
-        """発見元 parent → 発見 child のエッジを追加（決定的順序を維持）。"""
-        lst = self._adj.setdefault(parent, [])
-        if child not in lst:
-            lst.append(child)
-            lst.sort()
+        """発見元 parent → 発見 child のエッジを追加（決定的順序を維持）。
+
+        insort は「append + sort」と同じ昇順リストを維持しつつ挿入 O(k) に抑える
+        （sort の O(k log k) と set の O(1) membership で hot ノードの O(k²) を除去）。
+        """
+        seen = self._adj_seen.setdefault(parent, set())
+        if child not in seen:
+            seen.add(child)
+            insort(self._adj.setdefault(parent, []), child)
+            self._reverse_adj = None          # 祖先枝刈り用の逆隣接を無効化する
+
+    def _ancestors_of(self, target: Occurrence) -> set[Occurrence]:
+        """target へ到達し得るノード集合（target 自身を含む）を逆方向 BFS で返す。
+
+        chains_to の DFS をこの集合内に枝刈りする。max_paths は「target への到達パス数」
+        にしか効かないため、枝刈りが無いと到達不能な部分グラフを max_depth まで
+        総当たりで歩き、fan-out の大きい来歴で finalize が終わらなくなる。
+        コストは target の祖先部分グラフに比例する（全グラフではない）。
+        """
+        if self._reverse_adj is None:
+            reverse_adj: dict[Occurrence, list[Occurrence]] = {}
+            for parent, children in self._adj.items():
+                for child in children:
+                    reverse_adj.setdefault(child, []).append(parent)
+            self._reverse_adj = reverse_adj
+        reached = {target}
+        frontier = [target]
+        while frontier:
+            node = frontier.pop()
+            for parent in self._reverse_adj.get(node, ()):
+                if parent not in reached:
+                    reached.add(parent)
+                    frontier.append(parent)
+        return reached
 
     def chains_to(
         self, target: Occurrence, *, max_depth: int, max_paths: int, diag: Diagnostics
@@ -57,23 +92,30 @@ class ProvenanceGraph:
         """
         limit = max_paths + 1
         results: list[str] = []
+        # target の祖先集合で DFS を枝刈りする。到達不能な部分グラフは歩かない
+        # （その枝で従来出ていた prov_max_depth/prov_cycle_cut 診断も出ない。
+        # 出力 chain には無関係な探索ノイズであり、探索量の保証を優先する）。
+        allowed = self._ancestors_of(target)
         for seed in sorted(self._seeds):
             if len(results) >= limit:
                 break
+            if seed not in allowed:
+                continue
             # visited_symbols は空で開始する（seed と同名 symbol への辺を単純パスとして許容）。
-            self._iter_dfs(seed, target, max_depth, limit, diag, results)
+            self._iter_dfs(seed, target, max_depth, limit, diag, results, allowed)
         results = sorted(set(results))
         if len(results) > max_paths:
             diag.add("prov_path_capped", f"{_hop(target)}\t>={max_paths}")
             results = results[:max_paths]
         return results
 
-    def _iter_dfs(self, seed, target, max_depth, limit, diag, results) -> None:
+    def _iter_dfs(self, seed, target, max_depth, limit, diag, results, allowed) -> None:
         """前順再帰 DFS を明示スタックで反復化する（制御フロー・診断順を厳密保持）。
 
         各フレーム = (node, path, visited_occ, visited_sym, neighbor_iter)。
         _visit が前順の到達処理（target 収集 / max_depth cut 診断）を担い、seed と
         各子で同一に呼ぶことで、cut 診断と子孫探索の interleave が再帰版と同順になる。
+        `allowed`（target の祖先集合）外の子へは降りない（到達不能枝の総当たり防止）。
         """
         if len(results) >= limit:
             return
@@ -103,7 +145,11 @@ class ProvenanceGraph:
                 stack.pop()
                 continue
             if next_occ in vocc or next_occ.symbol in vsym:
+                # 再訪エッジの打ち切りは到達可能性に依らず従来どおり診断する
+                # （循環検出は chain 仕様の一部。枝刈りで黙らせない）。
                 diag.add("prov_cycle_cut", _hop(node) + " -> " + _hop(next_occ))
+                continue
+            if next_occ not in allowed:          # target へ到達し得ない未訪問枝は降りない
                 continue
             child_path = path + (next_occ,)
             if not _visit(child_path):

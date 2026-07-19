@@ -131,26 +131,39 @@ class _ParseFailed(Exception):
     """tree-sitter parse() が例外を投げた／巨大すぎて parse を諦めた内部シグナルである。"""
 
 
+# parse 断念の cache 済み判定を root と区別する番兵である。
+_PARSE_FAILED_VERDICT = object()
+
+
 def parse_tree(language: str, source: str, cache: dict | None = None):
     """ソースを host_source で逆マスク後 parse し root_node を返す。
 
     `cache` を渡すと language をキーに root_node をメモ化する。ファイル単位で空 dict を
     使い回すことで複数回の parse_tree 呼出を 1 回に集約できる。`cache=None` は毎回 parse。
 
-    parse() の例外は _ParseFailed に正規化して呼出側へ伝える。
+    parse() の例外は _ParseFailed に正規化して呼出側へ伝える。断念判定（サイズ超過・
+    parse 例外）も cache に記録する。巨大ファイルは判定のたびの全文 encode が
+    O(hits×size) になるため、同一ファイル内では 1 回で確定させる。
     climb/辞書アクセス等のロジック例外は捕捉しない。
     """
     if cache is not None and language in cache:
-        return cache[language]
+        cached = cache[language]
+        if cached is _PARSE_FAILED_VERDICT:
+            raise _ParseFailed(language)
+        return cached
     # _parser()（grammar 解決）と host_source()（逆マスク）は try の外に置く。
     # KeyError 等のロジック例外は握り潰さず即死させる。try は .parse() の1呼出のみに絞る。
     parser = _parser(language)
     src_bytes = host_source(language, source).encode("utf-8")
     if len(src_bytes) > _MAX_PARSE_BYTES:
+        if cache is not None:
+            cache[language] = _PARSE_FAILED_VERDICT
         raise _ParseFailed(language)        # OOM 回避＝非 AST 経路へ決定的降格（#K）
     try:
         root = parser.parse(src_bytes).root_node
     except Exception as e:
+        if cache is not None:
+            cache[language] = _PARSE_FAILED_VERDICT
         raise _ParseFailed(language) from e
     if cache is not None:
         cache[language] = root
