@@ -1,5 +1,6 @@
 import argparse
 import codecs
+import os
 from pathlib import Path
 
 from grep_analyzer.fixedpoint import EngineOptions
@@ -41,8 +42,8 @@ def _make_parser() -> argparse.ArgumentParser:
                         help="走査対象に含める glob（複数指定可）")
     parser.add_argument("--exclude", action="append", default=None,
                         help="走査から除外する glob（複数指定可・既定除外を上書き）")
-    parser.add_argument("--jobs", type=int, default=1,
-                        help="走査並列度（既定 1。N でも出力はバイト同一）")
+    parser.add_argument("--jobs", type=int, default=None,
+                        help="走査並列度（既定 auto=CPU数。値によらず出力はバイト同一）")
     parser.add_argument("--follow-symlinks", action="store_true", dest="follow_symlinks",
                         help="シンボリックリンクをたどる（既定 off）")
     parser.add_argument("--max-file-bytes", type=int, default=5_000_000, dest="max_file_bytes",
@@ -64,8 +65,8 @@ def _make_parser() -> argparse.ArgumentParser:
                         help="自動 ON する総バイト閾値（既定 1GiB）")
     parser.add_argument("--max-passes", type=int, default=8, dest="max_passes",
                         help="（内部）最大パス数")
-    parser.add_argument("--progress", default="off", choices=["on", "off"],
-                        help="進捗表示 on/off（既定 off）")
+    parser.add_argument("--progress", default="on", choices=["on", "off"],
+                        help="進捗表示 on/off（既定 on・stderr のみで出力は不変）")
     parser.add_argument("--resume", action="store_true",
                         help="完了済みキーワードをスキップ（manifest で完了判定）")
     parser.add_argument("--output-encoding", default="utf-8-sig", dest="output_encoding",
@@ -105,7 +106,8 @@ def _opts_from(args: argparse.Namespace) -> EngineOptions:
         stoplist_path=Path(args.stoplist) if args.stoplist else None,
         lang_map=_parse_lang_map(args.lang_map), include=args.include,
         exclude=args.exclude if args.exclude is not None else list(DEFAULT_EXCLUDE),
-        jobs=args.jobs, follow_symlinks=args.follow_symlinks,
+        jobs=args.jobs if args.jobs is not None else (os.cpu_count() or 1),
+        follow_symlinks=args.follow_symlinks,
         max_file_bytes=args.max_file_bytes, max_symbols=args.max_symbols,
         max_paths=args.max_paths,
         memory_limit_mb=args.memory_limit_mb, use_ripgrep=args.use_ripgrep,
@@ -147,7 +149,7 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
         parser.error("--output must not be the same directory as --source-root")
     if out_real == Path(args.input).resolve():
         parser.error("--output must not be the same directory as --input")
-    if args.jobs < 1:
+    if args.jobs is not None and args.jobs < 1:
         parser.error("--jobs must be >= 1")
     if args.max_depth < 0:
         parser.error("--max-depth must be >= 0")

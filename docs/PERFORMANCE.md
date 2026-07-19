@@ -21,15 +21,14 @@ CACHE=$OUT/../ga_decode_cache
 
 mkdir -p "$OUT" "$CACHE"
 python -m grep_analyzer \
-  --jobs "$(nproc)" \
   --decode-cache-dir "$CACHE" \
-  --progress on \
   --input "$GREP_IN" \
   --output "$OUT" \
   --source-root "$SRC"
 ```
 
-ripgrep prefilter は 60GB なら自動 ON（閾値 1GiB・rg 同梱）。`--progress on` で walk 件数と
+並列走査（`--jobs`、既定 auto=CPU数）と進捗表示（`--progress`、既定 on）は既定で有効。
+ripgrep prefilter は 60GB なら自動 ON（閾値 1GiB・rg 同梱）。walk 件数と
 hop 内の `scanning N/total` が stderr に出るので、止まっていないか確認できる。
 2 回目以降は同じ `--decode-cache-dir` を指せば、変更の無いファイルの再復号を丸ごと省ける。
 
@@ -40,9 +39,7 @@ SJIS 主体で chardet が重いなら `--fast-encoding`、間接参照を深追
 
 ```bash
 python -m grep_analyzer \
-  --jobs "$(nproc)" \
   --decode-cache-dir "$CACHE" \
-  --progress on \
   --fast-encoding \
   --max-depth 4 \
   --no-perkw-diag \
@@ -54,10 +51,10 @@ python -m grep_analyzer \
 
 | フラグ | 効果 | 出力 |
 |---|---|---|
-| `--jobs N` | 走査を N 並列化。`pool.map` は順序保存なので結果は不変。**単独で最大の効果**。 | バイト不変 |
+| `--jobs N` | 走査を N 並列化（**既定 auto=CPU数**）。`pool.map` は順序保存なので結果は不変。共有マシン等で絞りたいときだけ明示指定。 | バイト不変 |
 | `--decode-cache-dir DIR` | 復号＋言語判定を「ファイル(mtime/size)単位で1回」に固定し、hop・worker・**run をまたいで再利用**。direct/seed/scan/finalize の全経路が同一キャッシュを共有する（realpath 正規化）。2 回目以降の run は変更の無いファイルを再復号しない。 | バイト不変 |
 | `--decode-cache-max-bytes N` | 永続キャッシュの上限。超過時に古い順で退避（LRU）。**run をまたいで `--decode-cache-dir` を使うなら推奨**（無制限だと下記の ~1.5× footprint で無制限に肥大する）。 | バイト不変（退避は再復号に降格するだけ） |
-| `--progress on` | walk 列挙中の件数と、hop 内の走査途中経過を stderr に出す（**進行中か停止中かが分かる**）。 | バイト不変（stderr のみ） |
+| `--progress on/off` | walk 列挙中の件数と、hop 内の走査途中経過を stderr に出す（**進行中か停止中かが分かる**）。**既定 on**。ログを静かにしたいときは `--progress off`。 | バイト不変（stderr のみ） |
 | `--max-depth K` | 不動点 hop 数の上限。間接参照を深追いしないなら下げて再走査を減らす。 | 追跡深さが変わる |
 | `--exclude GLOB` | vendor/生成物/巨大バイナリを物理的に除外し総量を削る。 | 対象が変わる |
 | `--resume` | 完了済み keyword をスキップ。途中失敗時の再実行を高速化。 | 不変 |
@@ -76,7 +73,7 @@ python -m grep_analyzer \
 
 ## まず計測したいとき
 
-`--progress on` で 1 回回し、
+進捗表示（既定 on）を見ながら 1 回回し、
 
 - walk が長く無音 → I/O / ファイル数律速。`--exclude` で削る。
 - hop 数が多く毎 hop の `scanning N/total` が全件に近い → ripgrep prefilter が効いていない
