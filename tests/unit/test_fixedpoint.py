@@ -7,32 +7,9 @@ from grep_analyzer.fixedpoint import EngineOptions, run_fixedpoint
 from grep_analyzer.model import Hit
 
 
-def _opts(**kw):
-    base = dict(max_depth=5, min_specificity=2, stoplist_path=None, lang_map={},
-                include=[], exclude=[], jobs=1, follow_symlinks=False,
-                max_file_bytes=1_000_000, max_symbols=1000, max_paths=100,
-                memory_limit_mb=None, use_ripgrep=False, max_passes=8,
-                progress="off", spill_dir=None, force_chunks=0)
-    base.update(kw)
-    return EngineOptions(**base)
-
-
-def _seed(keyword, language, rel, lineno, content):
-    return Hit(keyword=keyword, language=language, file=rel, lineno=lineno,
-               ref_kind="direct", category="宣言", category_sub="",
-               usage_summary=f"宣言 ({language})", via_symbol="",
-               chain=f"{keyword}@{rel}:{lineno}", snippet=content,
-               encoding="utf-8", confidence="high")
-
-
-def _mk(tmp_path, files):
-    src = tmp_path / "src"
-    src.mkdir()
-    for rel, body in files.items():
-        f = src / rel
-        f.parent.mkdir(parents=True, exist_ok=True)
-        f.write_text(body, "utf-8")
-    return src
+from tests.unit.engine_helpers import make_opts as _opts
+from tests.unit.engine_helpers import make_seed as _seed
+from tests.unit.engine_helpers import make_source_tree as _mk
 
 
 def test_seed定数の他ファイル出現をindirect_constantで報告し単一ホップ(tmp_path):

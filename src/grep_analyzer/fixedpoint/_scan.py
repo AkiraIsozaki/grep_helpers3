@@ -155,7 +155,9 @@ def _read_meta(relpath, abspath, lang_map, fallback, cache, enc_memo=None,
     """file_meta 結果を階層キャッシュ経由で取得する。
 
     L1=in-memory(cache) → L2=disk(decode_cache) → miss=read+decode+detect。
-    decode_cache は hop・worker・run をまたいで decode/言語判定を 1 回に固定する。
+    decode_cache は hop・worker・run をまたいで decode を 1 回に固定する。
+    言語判定は relpath 依存のため永続化しない（H2）: L2 ヒットでも relpath から
+    再導出する（安価な拡張子/サンプル判定のみ）。
     """
     if cache is not None:
         hit = cache.get(abspath)
@@ -241,9 +243,11 @@ def _scan_one(relpath, abspath, automaton_obj, lang_map, fallback, cache=None, e
         # TSV の encoding 列を汚す。
         return relpath, None, False, "c", "bourne", []
     found = []
-    if automaton_obj is not None:
-        # automaton_obj は build_pair の (cs, ci) 対。言語規約（SQL は大小無別）に
-        # 従って照合する。後方互換で単体 Automaton が渡された場合は cs として扱う。
+    # automaton_obj は build_pair の (cs, ci) 対。空シンボル集合の (None, None) は
+    # 「automaton なし」と同義（is not None 判定はタプルに真となりすり抜けるため明示）。
+    if automaton_obj is not None and automaton_obj != (None, None):
+        # 言語規約（SQL は大小無別）に従って照合する。
+        # 後方互換で単体 Automaton が渡された場合は cs として扱う。
         pair = automaton_obj if isinstance(automaton_obj, tuple) \
             else (automaton_obj, None)
         resolver = _LazyAstResolver(language, text)
@@ -295,10 +299,14 @@ def decode_cache_namespace(opts) -> str:
     （キャッシュしない）ので namespace には含めない（含めると lang_map 変更で decode を
     不要に全ミスさせる・Obs-B）。
     """
+    from grep_analyzer.encoding import DECODE_LOGIC_VERSION
     fp = json.dumps(
         {
             "fast": bool(opts.fast_encoding),
             "fallback": list(opts.encoding_fallback),
+            # decode 実装の版数。写像変更（cp932 統一等）前の旧キャッシュが新版で
+            # ヒットすると、キャッシュ有無で出力が割れる（決定性違反）。
+            "decode_logic": DECODE_LOGIC_VERSION,
         },
         ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha1(fp.encode("utf-8", "surrogatepass")).hexdigest()[:16]
@@ -311,9 +319,10 @@ def make_decode_cache(opts, namespace: "str | None" = None):
     """
     if namespace is None:
         namespace = decode_cache_namespace(opts)
-    # jobs は並列会計（自増分×jobs の保守的総量判定）に使う。main/worker で同値を渡す。
+    # 並列会計の「書き手数」: jobs>1 では main + N worker が同時に put し得る。
+    writers = opts.jobs + 1 if opts.jobs > 1 else 1
     return DecodeCache(opts.decode_cache_dir, namespace=namespace,
-                       max_bytes=opts.decode_cache_max_bytes, jobs=opts.jobs)
+                       max_bytes=opts.decode_cache_max_bytes, jobs=writers)
 
 
 def _worker_init(lang_map, fallback, jobs, decode_cache_dir, namespace, fast,
@@ -333,9 +342,12 @@ def _worker_init(lang_map, fallback, jobs, decode_cache_dir, namespace, fast,
     # max_bytes を worker にも渡す。jobs>1 では scan の put は worker 側なので、ここで
     # 上限を効かせないと --decode-cache-max-bytes が並列時に空文になる（F3）。各 worker は
     # 共有ディレクトリ全体に対して退避するので、どれかが上限を跨いだ時点で全体が縮む。
-    # jobs も渡し「自分の増分 × jobs」の保守的会計で並列時の合計膨張を上限内に抑える。
+    # 書き手数（main + N worker）の保守的会計で並列時の合計膨張を上限内に抑える。
+    # worker=True: 起動時の temp 掃除（同一 run 内の書きかけ .tmp 競合）と初期全走査
+    # （N worker 一斉 glob+stat）を抑止する。
     _WORKER_DECODE_CACHE = DecodeCache(decode_cache_dir, namespace=namespace,
-                                       max_bytes=max_bytes, jobs=jobs)
+                                       max_bytes=max_bytes, jobs=jobs + 1,
+                                       worker=True)
 
 
 def _scan_file_worker(args):

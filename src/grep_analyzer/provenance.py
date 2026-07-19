@@ -54,6 +54,14 @@ class ProvenanceGraph:
             insort(self._adj.setdefault(parent, []), child)
             self._reverse_adj = None          # 祖先枝刈り用の逆隣接を無効化する
 
+    def compact(self) -> None:
+        """エッジ投入完了後に重複判定専用 set を解放する（メモリ削減）。
+
+        呼出後に add_edge すると重複エッジが混入し得るため、finalize のように
+        「全投入 → chains_to 参照のみ」の局面でのみ呼ぶこと。
+        """
+        self._adj_seen = {}
+
     def _ancestors_of(self, target: Occurrence) -> set[Occurrence]:
         """target へ到達し得るノード集合（target 自身を含む）を逆方向 BFS で返す。
 

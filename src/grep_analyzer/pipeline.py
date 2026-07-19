@@ -33,6 +33,11 @@ from grep_analyzer.walk import (
 )
 
 
+# .grep のエンコーディング判定に使う先頭サンプル長。判定は行間一貫の codec 名にしか
+# 使わないため全文走査は不要（60GB コーパス由来の grep 結果は数百 MB になり得る）。
+_GREP_ENC_SAMPLE_BYTES = 4 * 1024 * 1024
+
+
 def _default_opts() -> EngineOptions:
     # 既定値は EngineOptions（_options.py）が単一情報源。exclude のみ本番既定を明示。
     return EngineOptions(exclude=list(DEFAULT_EXCLUDE))
@@ -191,6 +196,12 @@ def run(
         for grep_file in sorted(Path(input_dir).glob("*.grep"),
                                 key=lambda p: (p.stem, p.name)):
             keyword = grep_file.stem
+            # 長大 keyword は確定名 {keyword}.manifest.json 等が NAME_MAX(255B) を
+            # 超え、全走査完了後の finalize で ENAMETOOLONG となり run が落ちる。
+            # 全走査前に検出して skip する（診断に記帳）。
+            if len(os.fsencode(keyword)) > 230:
+                walk_diag.add("keyword_name_too_long", sanitize_field(keyword[:80]))
+                continue
             # Windows ツール経由の .grep は UTF-8 BOM 付きで保存され、1 行目の path が
             # BOM 前置になり missing_source へ落ちる。入力仕様外バイトとして先頭で剥がす
             # （指紋も剥いだ後の本文で計算し、BOM 有無だけの差で再処理させない）。
@@ -208,7 +219,13 @@ def run(
             direct_diag[keyword] = kw_diag
             # content 復号用にファイル単位で文字コードを 1 回だけ判定（chardet 1回・行間一貫）。
             # パスは生バイトのまま os.fsdecode するため、ここでは encoding のみ使う。
-            _, grep_enc, _ = decode_bytes(grep_bytes, fb, fast=opts.fast_encoding)
+            # 巨大 .grep（GB 級になり得る）の全文 decode + chardet 全走査を避けるため
+            # 先頭サンプルで判定する（サンプル未満のファイルは従来と同一）。境界での
+            # マルチバイト分断が utf-8 strict を偽陰性にしないよう末尾 3 バイトを丸める。
+            sample = grep_bytes[:_GREP_ENC_SAMPLE_BYTES]
+            if len(sample) == _GREP_ENC_SAMPLE_BYTES:
+                sample = sample[:-3]
+            _, grep_enc, _ = decode_bytes(sample, fb, fast=opts.fast_encoding)
             lines = grep_bytes.split(b"\n")
             if lines and lines[-1] == b"":
                 lines.pop()                       # 末尾改行による空要素（splitlines 相当）

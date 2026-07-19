@@ -9,7 +9,9 @@ from pathlib import Path
 
 _SRC = Path(__file__).resolve().parents[2] / "src"
 # coding-conventions.md の禁止: フェーズ/版/タスク/TODO マーカー。
-_FORBIDDEN = re.compile(r"\bPhase\s?\d|\bTask\s?\d|\brev\.\d|\bTODO\b|\bFIXME\b|\bNOTE\(")
+_FORBIDDEN = re.compile(
+    r"\bPhase\s?\d|\bTask\s?\d|\brev\.\d|\bTODO\b|\bFIXME\b|\bNOTE\(|"
+    r"フェーズ\s?\d|タスク\s?\d")
 
 
 _TESTS = Path(__file__).resolve().parents[1]
@@ -18,8 +20,8 @@ _TESTS = Path(__file__).resolve().parents[1]
 def _offenders_in(root: Path) -> list[str]:
     out = []
     for p in root.rglob("*.py"):
-        if p.name == "test_no_phase_markers.py":   # 検査器自身の定義行は除外
-            continue
+        if p.name == "test_no_phase_markers.py":
+            continue                        # 検査器自身はファイルごと除外（定義行を含むため）
         if "__pycache__" in p.parts:
             continue
         for i, line in enumerate(p.read_text("utf-8").splitlines(), 1):
@@ -37,4 +39,9 @@ def test_testsに禁止マーカーが無い():
     # 規約は「コードに残さない」であり tests もコード（ファイル名の phase 残存も
     # ここで検出される: docstring/コメントに書けばこのテストが落ちる）。
     offenders = _offenders_in(_TESTS)
+    assert not offenders, "禁止マーカーが残存:\n" + "\n".join(offenders)
+
+
+def test_scriptsに禁止マーカーが無い():
+    offenders = _offenders_in(_TESTS.parent / "scripts")
     assert not offenders, "禁止マーカーが残存:\n" + "\n".join(offenders)

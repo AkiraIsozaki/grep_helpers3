@@ -4,6 +4,7 @@
 正規形は _canonical_data_blob に一元化（書込側=完了判定=テストが共有）。
 """
 
+import codecs
 import hashlib
 import json
 import math
@@ -92,8 +93,12 @@ def _rows_from_part_text(text: str) -> list[str]:
     return lines[1:]  # 先頭はヘッダ
 
 
-def _atomic_write(path: "Path", data: bytes) -> None:
-    """唯一の原子書込プリミティブである（mkstemp->fsync->os.replace で不可分置換）。"""
+def _atomic_write_stream(path: "Path", chunks) -> None:
+    """唯一の原子書込プリミティブである（mkstemp->fsync->os.replace で不可分置換）。
+
+    chunks は bytes の iterable。GB 級 part を単一 blob として実体化せず書けるよう
+    ストリーミングで受ける。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     # prefix は識別の便宜にすぎず、一意性は mkstemp が担保する。長大 keyword で
     # temp 名（{name}.{rand}.tmp）が NAME_MAX(255B) を超えないよう FS バイト長で
@@ -103,7 +108,8 @@ def _atomic_write(path: "Path", data: bytes) -> None:
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=prefix, suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as f:
-            f.write(data)
+            for chunk in chunks:
+                f.write(chunk)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, path)
@@ -111,6 +117,11 @@ def _atomic_write(path: "Path", data: bytes) -> None:
         if os.path.exists(tmp):
             os.unlink(tmp)
         raise
+
+
+def _atomic_write(path: "Path", data: bytes) -> None:
+    """bytes 一括の原子書込（_atomic_write_stream の単一チャンク形）。"""
+    _atomic_write_stream(path, (data,))
 
 
 def _fsync_dir(d: "Path") -> None:
@@ -122,8 +133,23 @@ def _fsync_dir(d: "Path") -> None:
 
 
 def _part_bytes(header: str, data_rows: list[str], encoding: str) -> bytes:
+    """part 1 本の正規バイト列（参照実装・テストの正）。書込は streaming 版を使う。"""
     return ("\n".join([header] + data_rows) + "\n").encode(
         encoding, errors="replace")
+
+
+def _iter_part_bytes(header: str, data_rows, encoding: str):
+    """_part_bytes と同一のバイト列を行単位チャンクで yield する（blob 非実体化）。
+
+    incremental encoder は utf-8-sig の BOM を先頭チャンクにのみ付与するため、
+    チャンク連結は全文一括 encode とバイト同値である（文字独立 codec 前提＝
+    _persisted_rows_iter と同じ契約）。
+    """
+    encoder = codecs.getincrementalencoder(encoding)("replace")
+    yield encoder.encode(header)
+    for row in data_rows:
+        yield encoder.encode("\n" + row)
+    yield encoder.encode("\n", True)          # final=True で encoder を確定する
 
 
 def _previous_part_names(out_dir: "Path", keyword: str) -> set:
@@ -181,15 +207,17 @@ def finalize(out_dir: "Path", keyword: str, rows: "list[Hit]", opts,
     parts_meta = []
     if nparts == 1:
         name = f"{keyword}.tsv"
-        rows_lines = [_data_line(h) for h in ordered]
-        _atomic_write(out_dir / name, _part_bytes(header, rows_lines, enc))
+        _atomic_write_stream(
+            out_dir / name,
+            _iter_part_bytes(header, (_data_line(h) for h in ordered), enc))
         parts_meta.append({"name": name, "rows": total})
     else:
         for i in range(nparts):
             chunk = ordered[i * rows_per_part:(i + 1) * rows_per_part]
             name = f"{keyword}.part{i + 1:0{width}d}.tsv"
-            _atomic_write(out_dir / name,
-                          _part_bytes(header, [_data_line(h) for h in chunk], enc))
+            _atomic_write_stream(
+                out_dir / name,
+                _iter_part_bytes(header, (_data_line(h) for h in chunk), enc))
             parts_meta.append({"name": name, "rows": len(chunk)})
 
     manifest = {

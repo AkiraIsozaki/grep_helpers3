@@ -36,7 +36,8 @@ class DecodeCache:
     """
 
     def __init__(self, cache_dir: "Path | None", namespace: str = "",
-                 max_bytes: "int | None" = None, jobs: int = 1) -> None:
+                 max_bytes: "int | None" = None, jobs: int = 1,
+                 worker: bool = False) -> None:
         self._dir = Path(cache_dir) if cache_dir is not None \
             else Path(tempfile.mkdtemp(prefix="ga_decode_"))
         self._dir.mkdir(parents=True, exist_ok=True)
@@ -44,14 +45,22 @@ class DecodeCache:
         self._max_bytes = max_bytes
         self.put_failures = 0           # put が OSError（disk full 等）で no-op になった回数
         # 並列会計（F3 拡張）: 各プロセスは自分の put しか数えられないため、
-        # 「同期済み実測 + 自分の増分 × jobs」を保守的な総量上限判定に使う。
+        # 「同期済み実測 + 自分の増分 × 書き手数」を保守的な総量上限判定に使う。
         # 全 worker が同じ判定を使えば、どのプロセスも自分の増分が
-        # (max - synced)/jobs を超えた時点で実走査へ同期し、共有ディレクトリの
-        # 実総量は上限を（worker 間の同時 put 分を除き）超えない。
+        # (max - synced)/書き手数 を超えた時点で実走査へ同期し、共有ディレクトリの
+        # 実総量は上限を（プロセス間の同時 put 分を除き）超えない。
+        # jobs は「書き手数」を渡す（jobs>1 では main + N worker = jobs+1 を呼出側が渡す）。
         self._jobs = max(1, jobs)
-        self._synced_bytes = self._scan_total() if max_bytes is not None else 0
+        # worker=True は初期実測（cache dir 全 glob+stat）を初回の予算判定まで遅延する。
+        # N worker が起動時に一斉全走査すると数十万アーティファクト×N で pool 生成が
+        # 重くなるため。遅延中は synced=0 とみなす（保守的＝早めに実走査へ同期する側）。
+        self._synced_bytes: "int | None" = None if (worker and max_bytes is not None) \
+            else (self._scan_total() if max_bytes is not None else 0)
         self._local_put_bytes = 0
-        self._sweep_stale_temp()
+        # 起動時 temp 掃除は main のみ。worker が同一 run 内で行うと、先行 worker の
+        # 書きかけ .tmp を後発 worker の掃除が unlink し put が失敗する（同一 run 内競合）。
+        if not worker:
+            self._sweep_stale_temp()
 
     def _iter_artifacts(self):
         """*.dca の (mtime_ns, size, path) を列挙する（stat 不可の項目は飛ばす）。"""
@@ -175,10 +184,13 @@ class DecodeCache:
             return None
         # 退避順（_enforce_budget の mtime 昇順）を FIFO から LRU に近づけるため、
         # ヒットしたアーティファクトに touch する。失敗しても単なる退避順の劣化。
-        try:
-            os.utime(path)
-        except OSError:
-            pass
+        # 退避が無い（max_bytes 未指定）なら touch は無駄な inode 書込（NFS で顕著）
+        # なのでゲートする。
+        if self._max_bytes is not None:
+            try:
+                os.utime(path)
+            except OSError:
+                pass
         return self._decode_body(path, meta, body_bytes)
 
     def put(self, abspath: str, meta, sig=None) -> None:
@@ -224,9 +236,11 @@ class DecodeCache:
             return
         if self._max_bytes is not None:
             self._local_put_bytes += len(body)
-            # 自分の増分を jobs 倍した保守的概算が上限を跨いだときだけ実走査する
+            # 自分の増分を書き手数倍した保守的概算が上限を跨いだときだけ実走査する
             # （put 毎の全走査を回避しつつ、並列時の合計膨張を上限内に抑える）。
-            if self._synced_bytes + self._local_put_bytes * self._jobs > self._max_bytes:
+            # 遅延初期化（worker）中は synced=0 とみなし早めに実走査へ同期する。
+            synced = self._synced_bytes if self._synced_bytes is not None else 0
+            if synced + self._local_put_bytes * self._jobs > self._max_bytes:
                 self._enforce_budget()
 
     def _enforce_budget(self) -> None:

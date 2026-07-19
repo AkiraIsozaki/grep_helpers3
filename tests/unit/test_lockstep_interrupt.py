@@ -59,7 +59,9 @@ def test_prefilter無効化はdiagnosticsに記録される(tmp_path, monkeypatc
     from grep_analyzer import ripgrep
     from grep_analyzer.diagnostics import Diagnostics
     from grep_analyzer.fixedpoint import run_fixedpoint
-    from tests.unit.test_fixedpoint import _mk, _opts, _seed
+    from tests.unit.engine_helpers import (make_opts as _opts,
+                                       make_seed as _seed,
+                                       make_source_tree as _mk)
 
     monkeypatch.setattr(ripgrep, "_resolve_rg", lambda: None)
     src = _mk(tmp_path, {"C.java": "class C { static final int PF_K = 1; }\n",

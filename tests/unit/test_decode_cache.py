@@ -97,16 +97,26 @@ def test_起動時に残存tempを掃除する(tmp_path):
     assert not stale.exists()
 
 
-def test_max_bytes超過時に古いアーティファクトをLRU退避する(tmp_path):
+def test_max_bytes超過時に古いアーティファクトから退避する(tmp_path):
     import os
     cache = DecodeCache(tmp_path / "cache", max_bytes=4000)
-    metas = []
+    sources = []
     for i in range(6):
-        s = _src(tmp_path, f"f{i}.c", b"x" * 10)
+        s = _src(tmp_path, f"f{i}.c", bytes([65 + i]) * 10)
         os.utime(str(s), ns=(1_000_000_000 + i, 1_000_000_000 + i))
-        cache.put(str(s), ("Y" * 1500, "utf-8", False, "c", "bourne"))
+        cache.put(str(s), (chr(65 + i) * 1500, "utf-8", False, "c", "bourne"))
+        # アーティファクト mtime を put 順に固定（退避順の検証を FS 粒度に依存させない）
+        for art in (tmp_path / "cache").glob("*.dca"):
+            st = art.stat()
+            if st.st_mtime_ns > 2_000_000_000 + i:   # 今回書かれた新規のみ
+                os.utime(art, ns=(2_000_000_000 + i, 2_000_000_000 + i))
+        sources.append(s)
     total = sum(p.stat().st_size for p in (tmp_path / "cache").glob("*.dca"))
     assert total <= 4000                             # 上限を超えない（R-1）
+    # 「古い順から退避」を pin: 最新 put の f5 は必ず生き残り、最古の f0 は退避される
+    # （newest を先に消す誤実装ではここで落ちる）。
+    assert cache.get(str(sources[5])) is not None
+    assert cache.get(str(sources[0])) is None
 
 
 def test_put失敗はput_failuresを加算し例外を伝播しない(tmp_path, monkeypatch):
@@ -143,18 +153,22 @@ def test_並列会計は自プロセス分をjobs倍して上限発動する(tmp
 
 
 def test_getヒットはmtimeを更新し退避順がLRUに近づく(tmp_path):
-    import time
+    # sleep + FS の mtime 粒度に依存させず、アーティファクト mtime を明示注入して
+    # 決定的に検証する（粗粒度 FS でも安定）。
+    import os
     cache_dir = tmp_path / "cache"
     cache = DecodeCache(cache_dir, max_bytes=10_000)
     fa = _put_body(cache, tmp_path, "a.txt", "A" * 100)
-    time.sleep(0.01)
     _put_body(cache, tmp_path, "b.txt", "B" * 100)
-    time.sleep(0.01)
+    a_body = ("A" * 100).encode()
+    for art in cache_dir.glob("*.dca"):
+        base = 1_000_000_000
+        ns = base if a_body in art.read_bytes() else base + 1_000_000_000
+        os.utime(art, ns=(ns, ns))            # a を古く・b を新しく固定する
     assert cache.get(str(fa)) is not None     # a に触れる → a が最新になる
     arts = sorted(((p.stat().st_mtime_ns, p) for p in cache_dir.glob("*.dca")))
-    oldest = arts[0][1]
     newest = arts[-1][1]
+    oldest = arts[0][1]
     # 退避は mtime 昇順（oldest 先）なので、直近 get した a が newest 側にあること。
-    a_body = ("A" * 100).encode()
     assert a_body in newest.read_bytes()
     assert a_body not in oldest.read_bytes()

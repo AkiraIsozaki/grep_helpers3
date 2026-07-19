@@ -51,7 +51,9 @@ _SHELL_COMMENT = re.compile(r"^\s*#")
 _PERL_COMMENT = re.compile(r"^\s*#")
 _GROOVY_COMMENT = re.compile(r"^\s*//|^\s*/\*.*\*/\s*$")
 
-_BLOCK_COMMENT_CACHE_KEY = "_block_comment_lines"
+# cache キーの接頭辞。finalize がファイル単位で共有してよい小物キャッシュの識別に
+# 使うため public にする（パース木キーと区別する）。
+BLOCK_COMMENT_CACHE_KEY = "_block_comment_lines"
 
 # ブロックコメント状態機械が扱う文字列デリミタ（/* を文字列内で開始扱いしないため）。
 _STRING_QUOTES = {"sql": "'", "groovy": "'\""}
@@ -105,7 +107,12 @@ def _block_comment_lines(language: str, text: str) -> frozenset[int]:
                 i += 2
                 continue
             if language == "groovy" and ch == "\\":
-                i += 2
+                # エスケープは次の 1 文字を消費する。ただし改行は消費しない
+                # （跨ぐと行番号カウントがズレて以降全行の判定を汚染する）。
+                if i + 1 < n and text[i + 1] != "\n":
+                    i += 2
+                else:
+                    i += 1
                 continue
             if ch == in_string:
                 in_string = None
@@ -140,7 +147,7 @@ def _in_block_comment(language: str, text, lineno, cache) -> bool:
         return False
     if cache is None:
         return lineno in _block_comment_lines(language, text)
-    key = (_BLOCK_COMMENT_CACHE_KEY, language)
+    key = (BLOCK_COMMENT_CACHE_KEY, language)
     if key not in cache:
         cache[key] = _block_comment_lines(language, text)
     return lineno in cache[key]
@@ -183,8 +190,11 @@ _PERL_RULES = [
 _GROOVY_RULES = [
     (re.compile(r"^\s*(?:class|interface|enum|trait)\s+|"
                 r"^\s*(?:[\w.<>,\s]+\s+)?def\s+\w+\s*\(|"
-                r"^\s*(?!(?:return|if|for|while|switch|new|throw|else|assert|case|catch)\b)"
-                r"[\w.]+(?:<[^<>]{0,100}>)?(?:\[\])?\s+\w+\s*\([^()]*\)\s*\{\s*$"), "宣言"),
+                # 修飾子（0個以上）+ 型（1段ネスト generics / 配列可）+ 名前( ... ) {
+                r"^\s*(?:(?:public|private|protected|static|final|abstract|synchronized)\s+)*"
+                r"(?!(?:return|if|for|while|switch|new|throw|else|assert|case|catch)\b)"
+                r"[\w.]+(?:<(?:[^<>]|<[^<>]{0,60}>){0,100}>)?(?:\[\])?"
+                r"\s+\w+\s*\([^()]*\)\s*\{\s*$"), "宣言"),
     (re.compile(r"^\s*(?:def|final|[A-Za-z_]\w*(?:<[^>]*>)?)\s+\w+\s*=(?!=)|"
                 r"\b\w+\s*=(?!=)"), "代入"),
     (re.compile(r"\b(?:if|while)\b|==~|<=>|==|!=|<=|>=|=~|"

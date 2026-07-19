@@ -1,4 +1,4 @@
-"""Ingest→dispatch→classify→TSV の direct-only パイプライン（spec §15 フェーズ1）。"""
+"""Ingest→dispatch→classify→TSV の direct-only パイプライン（spec §15）。"""
 
 import os
 from pathlib import Path

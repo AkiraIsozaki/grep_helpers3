@@ -8,10 +8,11 @@ import re
 from grep_analyzer.patterns.literal_masking import MASK_PATTERNS, blank_keep_newlines
 
 # `EXEC SQL ... ;` / `EXEC SQL ... END-EXEC` / `EXEC ORACLE ... ;` を行跨ぎで捕捉する。
-# malformed（終端 ; 欠落）の暴走を空行・次の EXEC・EOF で打ち止め、後続 C コードの
-# 巻き込みを 1 段落に限定する（正しい入力では ; / END-EXEC が先に一致し挙動不変）。
+# malformed（終端 ; 欠落）の暴走は次の EXEC・EOF で打ち止める。空行での打ち止めは
+# 設けない: lazy `.*?` は最短位置で成立する選択肢が勝つため、空行を含む正当な
+# 複数行文（整形済み SELECT 等・実 Pro*C で合法）を必ず空行で切断してしまう。
 _EXEC_RE = re.compile(
-    r"\bEXEC\s+(?:SQL|ORACLE)\b.*?(?:;|END-EXEC\b|(?=\n[ \t]*\n)|(?=\n[ \t]*EXEC\s)|\Z)",
+    r"\bEXEC\s+(?:SQL|ORACLE)\b.*?(?:;|END-EXEC\b|(?=\n[ \t]*EXEC\s)|\Z)",
     re.IGNORECASE | re.DOTALL,
 )
 

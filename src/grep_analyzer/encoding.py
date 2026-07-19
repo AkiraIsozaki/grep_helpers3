@@ -5,6 +5,12 @@ import chardet
 # utf-8 → 検出結果 → cp932/euc-jp → latin-1（置換・最終手段）
 DEFAULT_FALLBACK = ["cp932", "euc-jp", "latin-1"]
 
+# decode 結果の意味を変える実装変更（cp932 エイリアス統一・1バイト系ガード等）の版数。
+# decode_cache の namespace に畳み込み、旧版 run が保存した永続キャッシュが新版で
+# ヒットして「同じバイトが 2 種の Unicode に割れる」のを防ぐ（キャッシュ有無で
+# 出力が変わる決定性違反の防止）。写像・選好を変えたら必ずインクリメントする。
+DECODE_LOGIC_VERSION = 2
+
 # chardet の SJIS 系検出名は cp932 へ正規化する。Python の shift_jis codec は
 # cp932 と写像が異なり（0x8160: U+301C vs U+FF5E、0x817C: U+2212 vs U+FF0D）、
 # NEC/IBM 拡張文字を含むファイルだけ fallback の cp932 に落ちる結果、同一コーパス内で
@@ -29,11 +35,16 @@ _SINGLE_BYTE_SUSPECTS = frozenset({
 })
 
 def _japanese_score(text: str) -> int:
-    """日本語スクリプト（かな・CJK・全角）の文字数を数える（多バイト復号の妥当性指標）。"""
+    """日本語スクリプトの文字数を数える（多バイト復号の妥当性指標）。
+
+    半角カナ（U+FF61〜FF9F）も数える。MS932 実運用では固定長レコード由来の
+    半角カナ主体ファイルが現実的で、これを外すとガードがそのクラスで無力になる。
+    """
     return sum(1 for ch in text
-               if 0x3040 <= ord(ch) <= 0x30FF      # ひらがな・カタカナ
+               if 0x3001 <= ord(ch) <= 0x303F      # CJK 句読点・記号（、。「」等）
+               or 0x3040 <= ord(ch) <= 0x30FF      # ひらがな・カタカナ
                or 0x4E00 <= ord(ch) <= 0x9FFF      # CJK 統合漢字
-               or 0xFF01 <= ord(ch) <= 0xFF5E)     # 全角英数記号
+               or 0xFF01 <= ord(ch) <= 0xFF9F)     # 全角英数記号＋半角カナ
 
 
 def _latin_score(text: str) -> int:
@@ -43,29 +54,34 @@ def _latin_score(text: str) -> int:
 
 def _prefer_multibyte(data: bytes, detected_norm: str, fallback_chain):
     """1 バイト系検出時、多バイト fallback の復号が「日本語として尤もらしい」場合のみ
-    そちらを採る。(text, enc, replaced) か None（従来経路へ）を返す。
+    そちらを採る。(text, enc, True) か None（従来経路へ）を返す。
 
     1 バイト系 codec はほぼ全バイト列で strict 成功するため判定力が無い。一方で
     無条件に多バイトを優先すると、真正 Latin テキスト（café 等）まで cp932 の
-    偶然成功で誤復号する。日本語スコア > Latin スコアのときだけ覆す（決定的）。
+    偶然成功で誤復号する。鎖の**全候補**を鎖順に評価し（最初の strict 成功で
+    打ち切らない）、日本語スコア > Latin スコアを満たす最初の codec を採る。
+    鎖順＝ユーザ宣言の優先度である（cp932/euc-jp のバイト衝突は原理的に不可分な
+    ため、同点解決は鎖順に委ねる）。覆した結果はヒューリスティックなので
+    第 3 要素 True＝「要確認」で顕在化させる。
     """
+    sb_text = None
     for enc in fallback_chain[:-1]:
         if enc.lower() in _SINGLE_BYTE_SUSPECTS:
-            continue
+            continue                          # 1 バイト系は常時成功なので判定力が無い
         try:
             mb_text = data.decode(enc)
         except (UnicodeDecodeError, LookupError):
             continue
         jp = _japanese_score(mb_text)
         if jp == 0:
-            return None
-        try:
-            sb_text = data.decode(detected_norm)
-        except (UnicodeDecodeError, LookupError):
-            sb_text = ""
+            continue                          # この codec は日本語でない: 次候補を見る
+        if sb_text is None:
+            try:
+                sb_text = data.decode(detected_norm)
+            except (UnicodeDecodeError, LookupError):
+                sb_text = ""
         if jp > _latin_score(sb_text):
-            return mb_text, enc, False
-        return None
+            return mb_text, enc, True
     return None
 
 

@@ -45,7 +45,7 @@ def _fetch_one(arch: str) -> None:
         if f is None:
             raise ValueError(f"{arch}: {rg_member} が通常ファイルとして取得できない")
         rg_bytes = f.read()
-        # rev.2 D: LICENSE-MIT と UNLICENSE の両方を取得し、欠ければ abort
+        # LICENSE-MIT と UNLICENSE の両方を取得し、欠ければ abort
         mit = next((m for m in tf.getmembers() if m.name.endswith("LICENSE-MIT")), None)
         unl = next((m for m in tf.getmembers() if m.name.endswith("UNLICENSE")), None)
         if mit is None or unl is None:
@@ -68,7 +68,7 @@ def _fetch_one(arch: str) -> None:
 
 
 if __name__ == "__main__":
-    # rev.2 D: PIN 未充填なら取得前に即 abort（vendor 空配備の静かな無効化を防ぐ）
+    # PIN 未充填なら取得前に即 abort（vendor 空配備の静かな無効化を防ぐ）
     for arch, (_, sha, _) in TARGETS.items():
         if sha.startswith("PIN_"):
             raise SystemExit(

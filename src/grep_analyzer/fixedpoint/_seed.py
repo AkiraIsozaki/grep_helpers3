@@ -55,6 +55,7 @@ def initialize_state(seed_hits: list[Hit], source_root: Path,
     # tree-sitter パースを 1 回に集約する（追加メモリは常に 1 ファイル分）。
     cur_relpath = None
     cur_text = cur_lines = cur_lang = cur_dialect = cur_tree_cache = None
+    read_failed_logged: set[str] = set()
     for s in seed_hits:
         occ = Occurrence(s.keyword, s.file, s.lineno)
         state.graph.add_seed(occ)
@@ -68,7 +69,11 @@ def initialize_state(seed_hits: list[Hit], source_root: Path,
                 # 落とさず空抽出へ降格する（read 時 sig で put・L1）。
                 raw, sig = read_bytes_with_sig(sp)
             except OSError:
-                diag.add("source_read_failed", s.file)
+                # 同一ファイルの連続 seed で毎回発火させない（ファイルにつき 1 回・
+                # finalize 側 _read_failed_logged と同じ粒度）。
+                if s.file not in read_failed_logged:
+                    diag.add("source_read_failed", s.file)
+                    read_failed_logged.add(s.file)
                 readable = False
             else:
                 cur_text, _, _, cur_lang, cur_dialect = meta_via_decode_cache(

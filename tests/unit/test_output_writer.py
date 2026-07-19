@@ -6,11 +6,7 @@ from grep_analyzer.output_writer import (
     _rows_from_part_text)
 
 
-def _hit(file, lineno, snippet):
-    return Hit(keyword="K", language="java", file=file, lineno=lineno,
-               ref_kind="direct", category="c", category_sub="",
-               usage_summary="u", via_symbol="", chain="ch",
-               snippet=snippet, encoding="utf-8", confidence="low")
+from tests.unit.writer_helpers import make_hit as _hit
 
 
 def test_canonical_blob_はsanitize後_split改行で安定():
@@ -71,17 +67,8 @@ from grep_analyzer.fixedpoint import EngineOptions
 from grep_analyzer.output_writer import finalize
 
 
-def _opts(**kw):
-    base = dict(max_depth=10, min_specificity=2, stoplist_path=None,
-                lang_map={}, include=[], exclude=[], jobs=1,
-                follow_symlinks=False, max_file_bytes=5_000_000,
-                max_symbols=100_000, max_paths=1000)
-    base.update(kw)
-    return EngineOptions(**base)
-
-
-def _mk(n):
-    return [_hit(f"f{i:05d}.java", i, f"s{i}") for i in range(n)]
+from tests.unit.writer_helpers import make_hits as _mk
+from tests.unit.writer_helpers import make_writer_opts as _opts
 
 
 def test_canonical_blob_サロゲート文字でも落ちずreplaceで潰れる():
@@ -204,3 +191,20 @@ def test_data_rows_sha256はblob版sha256と同値():
     for rows in cases:
         expected = hashlib.sha256(_blob_from_data_rows(rows)).hexdigest()
         assert data_rows_sha256(rows) == expected, rows
+
+
+def test_iter_part_bytesは一括encodeとバイト同値():
+    # streaming 書込（incremental encoder）は BOM・lossy 置換・サロゲートを含めて
+    # _part_bytes（全文一括 encode）とバイト同値であること。
+    from grep_analyzer.output_writer import _iter_part_bytes, _part_bytes
+    header = "h1\th2"
+    cases = [
+        ("utf-8-sig", ["a\tb", "日本語", ""]),
+        ("cp932", ["日本語", "非表現①文字", "サロゲート\udc95"]),
+        ("utf-8", []),
+        ("latin-1", ["café", "x"]),
+    ]
+    for enc, rows in cases:
+        expected = _part_bytes(header, rows, enc)
+        actual = b"".join(_iter_part_bytes(header, iter(rows), enc))
+        assert actual == expected, (enc, rows)

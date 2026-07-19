@@ -7,7 +7,9 @@ import pytest
 from grep_analyzer import output_writer
 from grep_analyzer.output_writer import finalize
 from grep_analyzer import resume
-from tests.unit.test_output_writer import _hit, _mk, _opts
+from tests.unit.writer_helpers import (make_hit as _hit,
+                                       make_hits as _mk,
+                                       make_writer_opts as _opts)
 
 
 def test_正常完了は完了判定真(tmp_path):

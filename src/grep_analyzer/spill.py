@@ -18,6 +18,11 @@ from grep_analyzer.provenance import Occurrence
 # 外部マージの 1 run に載せるエッジ数（sorted_unique のピークメモリ上限を決める）。
 _SORT_CHUNK_EDGES = 200_000
 
+# 1 回のマージで同時にオープンする run 数の上限。heapq.merge に全 run を渡すと
+# run 数（スピル行数 / _SORT_CHUNK_EDGES）が soft ulimit(既定 1024) を超えたとき
+# finalize 段で EMFILE により多時間 run が全損する。超過時はカスケードマージする。
+_MERGE_FAN_IN = 64
+
 _ESC = {"\\": "\\\\", "\t": "\\t", "\n": "\\n", "\r": "\\r"}
 _UNESC = {"\\\\": "\\", "\\t": "\t", "\\n": "\n", "\\r": "\r"}
 
@@ -130,41 +135,75 @@ class EdgeStore:
                 if line.strip():
                     yield parse_edge(line)
 
+    def _merge_group_to_run(self, group: list[Path]) -> Path:
+        """run 群を 1 本のソート済み run へマージして書き出す（隣接重複を除去）。"""
+        iters = [self._iter_run(p) for p in group]
+        fd, out = tempfile.mkstemp(dir=str(self._dir),
+                                   prefix=f"ga_edges_{_self_token()}_run_",
+                                   suffix=".tsv")
+        with os.fdopen(fd, "w", encoding="utf-8", errors="surrogatepass") as w:
+            prev = None
+            for edge in heapq.merge(*iters):
+                if edge != prev:
+                    w.write(serialize_edge(*edge) + "\n")
+                    prev = edge
+        return Path(out)
+
     def sorted_unique(self) -> Iterator[tuple[Occurrence, Occurrence]]:
         """sorted(set(edges)) と同一順序・同一集合を返す（出力透過・決定的）。
 
         スピル済は全件を set に読み戻さず（スピルの目的が確定段で無効になるため）、
         _SORT_CHUNK_EDGES 件ごとにソート済み run を作り heapq.merge で畳む。
         run 内重複は per-chunk set、run 間重複はマージ列の隣接比較で除く。
+        run 数が _MERGE_FAN_IN を超える場合はカスケードマージで段階的に減らし、
+        同時オープン FD 数を有界化する（EMFILE 防止）。
         ピークメモリは O(_SORT_CHUNK_EDGES)。
         """
         if not self.spilled:
             yield from sorted(set(self._mem))
             return
         self._fh.flush()
-        runs: list[Path] = []
+        live: set[Path] = set()               # 現存する全 run（finally で必ず掃除する）
+
+        def _unlink(path: Path) -> None:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            live.discard(path)
+
         try:
+            pending: list[Path] = []
             chunk: set[tuple[Occurrence, Occurrence]] = set()
             with open(self._path, encoding="utf-8", errors="surrogatepass") as r:  # 書込と対称
                 for line in r:
                     if line.strip():
                         chunk.add(parse_edge(line))
                         if len(chunk) >= _SORT_CHUNK_EDGES:
-                            runs.append(self._write_run(sorted(chunk)))
+                            pending.append(self._write_run(sorted(chunk)))
+                            live.add(pending[-1])
                             chunk = set()
             if chunk:
-                runs.append(self._write_run(sorted(chunk)))
+                pending.append(self._write_run(sorted(chunk)))
+                live.add(pending[-1])
+            while len(pending) > _MERGE_FAN_IN:
+                next_pending: list[Path] = []
+                for i in range(0, len(pending), _MERGE_FAN_IN):
+                    group = pending[i:i + _MERGE_FAN_IN]
+                    merged = self._merge_group_to_run(group)
+                    live.add(merged)
+                    next_pending.append(merged)
+                    for p in group:
+                        _unlink(p)
+                pending = next_pending
             prev = None
-            for edge in heapq.merge(*(self._iter_run(p) for p in runs)):
+            for edge in heapq.merge(*(self._iter_run(p) for p in pending)):
                 if edge != prev:
                     yield edge
                     prev = edge
         finally:
-            for p in runs:
-                try:
-                    p.unlink()
-                except OSError:
-                    pass
+            for p in list(live):
+                _unlink(p)
 
     def close(self) -> None:
         """一時ファイルを閉じて削除する（確定ループ完了後・例外時も finally で呼ぶ）。

@@ -9,7 +9,8 @@
 
 from grep_analyzer import resume
 from grep_analyzer.output_writer import finalize
-from tests.unit.test_output_writer import _hit, _opts
+from tests.unit.writer_helpers import (make_hit as _hit,
+                                       make_writer_opts as _opts)
 
 
 def test_cp932非表現文字を含む行でもcp932出力のresumeが完了判定真(tmp_path):

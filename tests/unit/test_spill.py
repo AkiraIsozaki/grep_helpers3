@@ -107,3 +107,22 @@ def test_スピル済sorted_uniqueは外部マージでも同一集合同一順�
     s.close()
     # run 一時ファイルを残さない
     assert list(tmp_path.glob("ga_edges_*run*")) == []
+
+
+def test_スピル済マージはfan_in上限を超えるrun数でも同一集合(tmp_path, monkeypatch):
+    # heapq.merge が全 run を同時オープンすると run 数 > ulimit で finalize が
+    # EMFILE 全損する。fan-in 上限のカスケードマージでも sorted(set()) と同値のこと。
+    import grep_analyzer.spill as spill_mod
+    monkeypatch.setattr(spill_mod, "_SORT_CHUNK_EDGES", 2)
+    monkeypatch.setattr(spill_mod, "_MERGE_FAN_IN", 3)     # 多段カスケードを強制
+    s = EdgeStore(tmp_path, MemoryBudget(None))
+    s._force_spill_threshold = 1
+    edges = [(Occurrence(f"S{i % 9}", f"s{i % 5}.c", i % 4),
+              Occurrence("H", "h.c", 9)) for i in range(60)]
+    for p, c in edges:
+        s.add(p, c)
+    assert s.spilled is True
+    assert list(s.sorted_unique()) == sorted(set(edges))
+    assert list(s.sorted_unique()) == sorted(set(edges))   # 再走査可
+    s.close()
+    assert list(tmp_path.glob("ga_edges_*run*")) == []     # 中間 run を残さない

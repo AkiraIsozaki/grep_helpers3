@@ -115,6 +115,39 @@ class Test分類規則:
         text = "/*+ INDEX(t idx) */\nUPDATE t SET a=1;\n"
         assert classify_hit("sql", None, text, 1, "/*+ INDEX(t idx) */")[0] != "コメント"
 
+    def test_groovy行末バックスラッシュは改行を食わず行番号がズレない(self):
+        # 行末 `"...\` で \ エスケープが改行を跨ぐと、以降全行のコメント判定が
+        # 1 行ズレてファイル全体を汚染する。
+        from grep_analyzer.classifiers.regex_classifier import _block_comment_lines
+        text = 'x = "a\\\ny = 1\n/* comment\n comment */\nz = 2\n'
+        assert sorted(_block_comment_lines("groovy", text)) == [3, 4]
+
+    def test_ブロックコメント判定はfinalizeでファイル単位に1回だけ計算する(self, tmp_path):
+        # O(ファイルサイズ) の全文走査が occurrence 毎に走ると O(hits×filesize) の
+        # 再導入になる。同一ファイルの複数ヒットで計算は 1 回であること。
+        from unittest.mock import patch
+        from grep_analyzer.diagnostics import Diagnostics
+        from grep_analyzer.fixedpoint import run_fixedpoint
+        from tests.unit.engine_helpers import (make_opts as _opts,
+                                       make_seed as _seed,
+                                       make_source_tree as _mk)
+        import grep_analyzer.classifiers.regex_classifier as rc
+        src_files = {"d.sql": "V_SEED_X := 1;\n",
+                     "u.sql": "a := V_SEED_X;\nb := V_SEED_X;\nc := V_SEED_X;\n"}
+        calls = {"n": 0}
+        real = rc._block_comment_lines
+
+        def counting(language, text):
+            calls["n"] += 1
+            return real(language, text)
+
+        root = _mk(tmp_path, src_files)
+        seed = _seed("V_SEED_X", "sql", "d.sql", 1, "V_SEED_X := 1;")
+        with patch.object(rc, "_block_comment_lines", counting):
+            run_fixedpoint([seed], root, _opts(max_depth=1), Diagnostics())
+        # u.sql に 3 ヒットあっても u.sql の計算は 1 回（ファイル数以下）に収まる
+        assert calls["n"] <= len(src_files)
+
     def test_groovy複数行ブロックコメント内部はコメント扱い(self):
         from grep_analyzer.classify import classify_hit
         text = "/* count = legacy behaviour\n * retry if broken */\ndef x = 1\n"
@@ -163,11 +196,23 @@ class TestSpan修正:
         assert jsp_region_span("<%-- comment\n more --%>\n", 1) is None
         assert jsp_region_span("<% int x = 1; %>\n", 1) == (0, 0)
 
-    def test_proc終端セミコロン欠落は空行で巻き込みを止める(self):
+    def test_proc空行を含む正当な複数行EXEC文は切断しない(self):
+        # 整形済みの複数行 SELECT は空行を挟んでも 1 文（実 Pro*C で合法）。
+        # 空行打ち止めは lazy 一致と組むと正当な文を必ず切断するため設けない。
+        from grep_analyzer.proc_preprocess import exec_spans, mask_exec_sql
+        src = ("EXEC SQL SELECT ename, sal\n"
+               "    INTO :emp_name, :salary\n"
+               "\n"
+               "    FROM emp\n"
+               "    WHERE empno = :emp_number;\n")
+        assert exec_spans(src) == [(0, 4)]
+        assert "FROM emp" not in mask_exec_sql(src)
+
+    def test_proc終端セミコロン欠落はEOFで巻き込みを止める(self):
         from grep_analyzer.proc_preprocess import exec_spans
-        src = "EXEC SQL WHENEVER SQLERROR CONTINUE\n\nint y = 2;\n"
+        src = "EXEC SQL WHENEVER SQLERROR CONTINUE\nint y = 2;"
         spans = exec_spans(src)
-        assert spans and spans[0][1] <= 1          # 空行まで（int y の行は含めない）
+        assert spans                               # EOF 打ち止めで必ず終端する
 
     def test_proc終端欠落でも次のEXECで巻き込みを止める(self):
         from grep_analyzer.proc_preprocess import mask_exec_sql
@@ -187,3 +232,89 @@ class TestSpan修正:
         span = heuristic_span(lines, 1, "sql")
         assert span[0] == 1                        # 前文の `;` 行は含めない
         assert span[1] == 2
+
+
+class TestEncodingガード強化:
+    def test_半角カナ主体ファイルも1バイト系誤検出から保護される(self, monkeypatch):
+        # 固定長レコード由来の半角カナは MS932 実運用で現実的。半角カナを日本語
+        # スコアに含めないとガードがこのクラスで無力になる（silent mojibake）。
+        monkeypatch.setattr(
+            "grep_analyzer.encoding.chardet.detect",
+            lambda b: {"encoding": "ISO-8859-1", "confidence": 0.68})
+        data = "ｱｲｳｴｵ ｶﾀｶﾅ ﾃﾞｰﾀ".encode("cp932")
+        text, enc, flagged = decode_bytes(data, DEFAULT_FALLBACK)
+        assert enc == "cp932"
+        assert text == "ｱｲｳｴｵ ｶﾀｶﾅ ﾃﾞｰﾀ"
+        assert flagged is True                 # ヒューリスティック覆しは要確認
+
+    def test_先頭候補が日本語でなくても後続候補を評価する(self, monkeypatch):
+        # 最初の strict 成功 codec で打ち切ると euc-jp が正解でも比較されない。
+        # 鎖を cp932 抜きにして euc-jp が拾われることを確認する。
+        monkeypatch.setattr(
+            "grep_analyzer.encoding.chardet.detect",
+            lambda b: {"encoding": "TIS-620", "confidence": 0.72})
+        data = "if (flag) { /* 顧客名 */ }".encode("euc-jp")
+        # ascii は strict 成功するが日本語スコア 0 → 継続して euc-jp を評価する
+        text, enc, flagged = decode_bytes(data, ["ascii", "euc-jp", "latin-1"])
+        assert enc == "euc-jp"
+        assert "顧客名" in text
+        assert flagged is True
+
+    def test_覆した復号には要確認フラグが付く(self, monkeypatch):
+        monkeypatch.setattr(
+            "grep_analyzer.encoding.chardet.detect",
+            lambda b: {"encoding": "Windows-1252", "confidence": 0.7})
+        data = "あいうえお日本語".encode("cp932")
+        _, enc, flagged = decode_bytes(data, DEFAULT_FALLBACK)
+        assert enc == "cp932"
+        assert flagged is True
+
+
+class TestReview2規則拡充:
+    def test_shell連続ハッシュと配列添字直後のハッシュは保護される(self):
+        from grep_analyzer.patterns.literal_masking import mask_literals
+        assert "${0##*/}" in mask_literals("shell", "base=${0##*/}")
+        assert "${arr[@]#p}" in mask_literals("shell", "echo ${arr[@]#p}")
+
+    def test_perlレキシカルファイルハンドルも分岐に分類する(self):
+        from grep_analyzer.classifiers.regex_classifier import classify_perl
+        assert classify_perl("while (<$fh>) {")[0] == "分岐"
+
+    def test_groovyネストgenericsと修飾子付き宣言も宣言に分類する(self):
+        from grep_analyzer.classifiers.regex_classifier import classify_groovy
+        assert classify_groovy("Map<String, List<String>> getMap() {")[0] == "宣言"
+        assert classify_groovy("public String getName() {")[0] == "宣言"
+        assert classify_groovy("static void main(String[] args) {")[0] == "宣言"
+        assert classify_groovy("return foo(1)")[0] != "宣言"
+        assert classify_groovy("synchronized (lock) {")[0] != "宣言"
+
+    def test_rg引数はNUL区切りを要求する(self):
+        # 改行入りファイル名の偽分割（上位集合契約の破れ）防止。
+        import inspect
+        from grep_analyzer import ripgrep
+        src = inspect.getsource(ripgrep._run_rg_list)
+        assert '"--null"' in src
+        assert 'split(b"\\0")' in src
+
+    def test_decode_cache_namespaceはdecode実装版数を含む(self, monkeypatch):
+        from grep_analyzer.fixedpoint._scan import decode_cache_namespace
+        from grep_analyzer.fixedpoint._options import EngineOptions
+        opts = EngineOptions()
+        ns_now = decode_cache_namespace(opts)
+        import grep_analyzer.encoding as enc_mod
+        monkeypatch.setattr(enc_mod, "DECODE_LOGIC_VERSION", 9999)
+        assert decode_cache_namespace(opts) != ns_now   # 版更新で旧キャッシュを全ミスさせる
+
+    def test_長大keywordは全走査前にskipされ診断に残る(self, tmp_path):
+        from grep_analyzer.pipeline import run
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.java").write_text("class A { int K = 1; }\n", "utf-8")
+        inp = tmp_path / "in"
+        inp.mkdir()
+        long_kw = "K" * 240
+        (inp / f"{long_kw}.grep").write_text("a.java:1:class A { int K = 1; }\n", "utf-8")
+        out = tmp_path / "out"
+        assert run(input_dir=inp, output_dir=out, source_root=src) == 0
+        assert not (out / f"{long_kw}.tsv").exists()
+        assert "keyword_name_too_long" in (out / "diagnostics.txt").read_text("utf-8")

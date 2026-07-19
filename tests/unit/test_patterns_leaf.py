@@ -40,3 +40,25 @@ class TestLineChasers:
         assert "retryCount" in cs.vars
         empty = extract_chase_symbols("groovy", None, "// retryCount = 3")
         assert empty.vars == () and empty.constants == ()
+
+
+class TestLeafImportGuard:
+    def test_patternsはgrep_analyzer内を一切importしない_葉性の機械強制(self):
+        # 層分離規約（patterns/* は何にも依存しない葉）の番兵。回帰したらここで落ちる。
+        import ast
+        import grep_analyzer.patterns as patterns_pkg
+        from pathlib import Path as _P
+        pkg_dir = _P(patterns_pkg.__file__).parent
+        offenders = []
+        for py in sorted(pkg_dir.glob("*.py")):
+            tree = ast.parse(py.read_text("utf-8"))
+            for node in ast.walk(tree):
+                names = []
+                if isinstance(node, ast.Import):
+                    names = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    names = [node.module or ""]
+                for name in names:
+                    if name.startswith("grep_analyzer"):
+                        offenders.append(f"{py.name}: {name}")
+        assert offenders == [], offenders

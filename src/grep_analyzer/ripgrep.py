@@ -168,8 +168,10 @@ def _run_rg_list(rg, pat_path, root, paths):
     # -i: automaton 側が SQL を大小無別で照合するため、prefilter も大小無別にして
     # 「scan がヒットするファイルの上位集合」という契約を保つ（他言語では単に
     # 上位集合が少し広がるだけで結果集合は不変）。
-    args = [rg, "-l", "-F", "-a", "-i", "--no-messages", "--no-ignore", "--hidden",
-            "--no-require-git", "-f", pat_path]
+    # --null: -l 出力を NUL 区切りにする。改行区切りだと改行入りファイル名が
+    # 偽 relpath 2 個に割れて照合から脱落し、上位集合契約が破れる。
+    args = [rg, "-l", "--null", "-F", "-a", "-i", "--no-messages", "--no-ignore",
+            "--hidden", "--no-require-git", "-f", pat_path]
     # `--` 区切り必須：corpus 由来の relpath は `-foo.c` のように `-` 始まりがあり得る。
     # 区切りが無いと rg がフラグと誤認し rc=2 で落ち、prefilter が None→全件走査へ
     # フォールバックして per-keyword の encoding_of/decode_replaced 帰属が崩れる（決定性違反）。
@@ -186,7 +188,7 @@ def _run_rg_list(rg, pat_path, root, paths):
     if proc.returncode not in (0, 1):
         return None
     hit = set()
-    for raw in proc.stdout.split(b"\n"):
+    for raw in proc.stdout.split(b"\0"):      # --null 区切り（改行入りファイル名対応）
         if not raw:
             continue
         hit.add(os.fsdecode(_normalize_rel_bytes(raw, backslash_sep=_SEP_IS_BACKSLASH)))

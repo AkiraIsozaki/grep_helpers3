@@ -113,7 +113,8 @@ def inline_template_spans(ts_source: str) -> list[tuple[int, int]]:
             for m in _INLINE_TEMPLATE.finditer(ts_source)]
 
 
-_SPANS_CACHE_KEY = "_inline_template_spans"
+# finalize がファイル単位で共有してよい小物キャッシュの識別に使うため public。
+SPANS_CACHE_KEY = "_inline_template_spans"
 
 
 def _cached_inline_spans(ts_source: str, cache: dict | None) -> list[tuple[int, int]]:
@@ -125,9 +126,9 @@ def _cached_inline_spans(ts_source: str, cache: dict | None) -> list[tuple[int, 
     """
     if cache is None:
         return inline_template_spans(ts_source)
-    if _SPANS_CACHE_KEY not in cache:
-        cache[_SPANS_CACHE_KEY] = inline_template_spans(ts_source)
-    return cache[_SPANS_CACHE_KEY]
+    if SPANS_CACHE_KEY not in cache:
+        cache[SPANS_CACHE_KEY] = inline_template_spans(ts_source)
+    return cache[SPANS_CACHE_KEY]
 
 
 def extract_inline_angular(ts_source: str) -> str:
