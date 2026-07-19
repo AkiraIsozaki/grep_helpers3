@@ -91,7 +91,18 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
             scan_files = files
             union_keep = None       # prefilter の結果（None＝全件走査）
             if opts.use_ripgrep:
-                union_keep = _rg.prefilter(source_root, rel_to_abs, scan_symbols)
+                # 縮退理由を live keyword の diagnostics に残す。ON になったことは
+                # 記録される（prefilter_auto_engaged）のに、効かなかったことが
+                # どこにも出ない非対称は運用上危険（全件走査へ黙って戻り長時間化）。
+                degrade_reasons: list[str] = []
+                union_keep = _rg.prefilter(source_root, rel_to_abs, scan_symbols,
+                                           on_degrade=degrade_reasons.append)
+                for reason in degrade_reasons:
+                    for kw, st in states_by_kw.items():
+                        sc_k, stm_k = per_kw[kw]
+                        if sc_k or stm_k:
+                            st.diagnostics.add("prefilter_disabled",
+                                               f"hop={ghop} reason={reason}")
                 if union_keep is not None:
                     safe = union_keep | unsafe_rels
                     scan_files = [(r, a) for r, a in files if r in safe]

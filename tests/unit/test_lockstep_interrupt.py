@@ -51,3 +51,21 @@ def test_中断時はterminateが呼ばれる(monkeypatch, tmp_path):
             _minimal_states(tmp_path, opts), tmp_path, opts, files=[])
     assert spy.terminated is True
     assert spy.closed is False
+
+
+def test_prefilter無効化はdiagnosticsに記録される(tmp_path, monkeypatch):
+    # --use-ripgrep 明示でも rg が壊れていれば黙って全件走査に縮退していた。
+    # ON になったことは記録されるのに効かなかったことが残らない非対称を塞ぐ。
+    from grep_analyzer import ripgrep
+    from grep_analyzer.diagnostics import Diagnostics
+    from grep_analyzer.fixedpoint import run_fixedpoint
+    from tests.unit.test_fixedpoint import _mk, _opts, _seed
+
+    monkeypatch.setattr(ripgrep, "_resolve_rg", lambda: None)
+    src = _mk(tmp_path, {"C.java": "class C { static final int PF_K = 1; }\n",
+                         "U.java": "class U { int x = PF_K; }\n"})
+    seed = _seed("PF_K", "java", "C.java", 1, "static final int PF_K = 1;")
+    diag = Diagnostics()
+    hits = run_fixedpoint([seed], src, _opts(max_depth=1, use_ripgrep=True), diag)
+    assert any(h.file == "U.java" for h in hits)         # 全件走査へ縮退し出力は正しい
+    assert diag.counts().get("prefilter_disabled", 0) >= 1

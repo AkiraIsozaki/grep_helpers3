@@ -83,7 +83,7 @@ def test_拡張子なしperlシェバンはperlと判定する():
 
 
 def test_拡張子なしpythonシェバンはpythonと判定する():
-    # python は track A で追加済み（dispatch Task 4）
+    # python は拡張子 dispatch に登録済み
     assert detect_language("bin/p", "#!/usr/bin/python3\nx=1\n", {}) == "python"
 
 
@@ -102,7 +102,7 @@ def test_拡張子なしEXEC_SQLはProCにフォールバックする():
 
 
 def test_拡張子で言語が確定するかを判定できる():
-    # Task 7 の unsupported_shebang を spec §5.1 手順3 の範囲に限定するための述語
+    # unsupported_shebang を spec §5.1 手順3 の範囲に限定するための述語
     assert extension_resolves_language("a/m.c", {}) is True
     assert extension_resolves_language("a/q.sql", {}) is True
     assert extension_resolves_language("a/r.csh", {}) is True
@@ -193,3 +193,13 @@ def test_長いpreamble後のEXEC_SQLを取りこぼさない():
     assert detect_language("a.c", text[:4096], {}) == "c"    # ← 4096 では見えない
     # 修正後の窓（65536）では正しく proc を返す:
     assert detect_language("a.c", text[:65536], {}) == "proc"
+
+
+def test_scan_oneの読込失敗は捏造エンコーディングを記録しない(tmp_path):
+    # OSError 降格が ("utf-8","c") を返すと absorb 側 setdefault が先取りし、
+    # 後続 hop の正しい encoding を上書き不能にして TSV の encoding 列を汚す。
+    from grep_analyzer.fixedpoint._scan import _scan_one
+    relpath, enc, replaced, language, dialect, found = _scan_one(
+        "gone.c", tmp_path / "gone.c", None, {}, ["cp932", "euc-jp", "latin-1"])
+    assert found == []
+    assert enc is None                        # 番兵: メタ未確定を表す
