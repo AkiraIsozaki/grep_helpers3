@@ -5,7 +5,7 @@ from grep_analyzer.classifiers.regex_classifier import classify_groovy, classify
 
 
 def test_ts言語はtree_sitterでhigh分類():
-    # if は自分の行・正しいメソッド内（既存 test_ts_classifier/test_pipeline と同形）。
+    # if は自分の行・正しいメソッド内（既存 test_ast_classifier/test_pipeline と同形）。
     # 不正 Java をクラス本体直下に置くと tree-sitter が ERROR ノード化し比較を取れない。
     src = "class A {\n void m(int x){\n  if (x == 1) {}\n }\n}\n"
     assert classify_hit("java", "", src, 3, "  if (x == 1) {}") == ("比較", "high")
@@ -88,11 +88,11 @@ def test_angular_classify():
 
 
 def test_angular_inline_classify_直接():
-    from grep_analyzer.classifiers.ts_classifier import classify_ts
+    from grep_analyzer.classifiers.ast_classifier import classify_ast
     src = '@Component({ template: `<p>{{ user.code }}</p>` })\n'
-    assert classify_ts("angular_inline", src, 1)[0] == "その他"
+    assert classify_ast("angular_inline", src, 1)[0] == "その他"
     src2 = '@Component({ template: `<button (click)="x = 1">b</button>` })\n'
-    assert classify_ts("angular_inline", src2, 1)[0] == "代入"
+    assert classify_ast("angular_inline", src2, 1)[0] == "代入"
 
 
 _C = ('@Component({\n'

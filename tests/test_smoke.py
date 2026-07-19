@@ -19,6 +19,6 @@ def test_CLIのhelpがexit0を返す():
 
 
 def test_tree_sitter言語がロードできる():
-    from grep_analyzer.classifiers.ts_classifier import classify_ts
+    from grep_analyzer.classifiers.ast_classifier import classify_ast
 
-    assert classify_ts("java", "class A{}\n", 1)[1] == "high"
+    assert classify_ast("java", "class A{}\n", 1)[1] == "high"

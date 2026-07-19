@@ -1,7 +1,7 @@
 """tree-sitter で Java/C/Pro*C 等を分類する。py-tree-sitter 0.23 API に依存する。
 
 parse／走査の基盤は ast_base に分離した。本モジュールは direct 行の分類
-（classify_ts）とノード型→カテゴリの対応表のみを持つ。
+（classify_ast）とノード型→カテゴリの対応表のみを持つ。
 """
 
 from grep_analyzer.classifiers.ast_base import _ParseFailed, node_at_line, parse_tree
@@ -68,7 +68,7 @@ _CATEGORY_BY_LANG = {
 }
 
 
-def classify_ts(language: str, source: str, lineno: int,
+def classify_ast(language: str, source: str, lineno: int,
                 cache: dict | None = None, diag=None) -> ClassifyResult:
     """ファイルを AST 解析して対象行を分類する。
 

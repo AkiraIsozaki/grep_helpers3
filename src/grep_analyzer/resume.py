@@ -93,28 +93,28 @@ def is_complete(out_dir: Path, keyword: str, opts,
     # 旧 manifest（指紋欠落）は None≠指紋 で不一致＝再実行。inputs_fingerprint=None
     # （呼出側が指紋を渡さない後方互換経路）のときは従来どおり指紋照合しない。
     if inputs_fingerprint is not None and m.get("inputs_fingerprint") != inputs_fingerprint:
-        return False
+        return False                                          # 条件2
     # 出力を変えるオプションを明示照合。data_sha256 は正規化 utf-8 のデータ行のみで
     # partition/encoding 構成に不感なため、ここで別途照合する。
     # 旧 manifest（max_rows_per_part 欠落）は None≠int で不一致＝未完了扱い（再実行）。
     if m.get("encoding", "utf-8-sig") != opts.output_encoding:
-        return False
+        return False                                          # 条件3
     if m.get("max_rows_per_part") != opts.max_rows_per_part:
-        return False
+        return False                                          # 条件3
     enc = m.get("encoding", "utf-8-sig")
     # sha は part 単位で読み・ストリーミングで畳む（全 part の data_rows を同時に
-    # 実体化すると完了判定だけで出力サイズ級のメモリを食う）。条件2/3 の不成立は
-    # bad フラグで generator から伝える（sha は捨てられ False になる）。
+    # 実体化すると完了判定だけで出力サイズ級のメモリを食う）。条件4 のうち part 実在・
+    # 行数の不成立は bad フラグで generator から伝える（sha は捨てられ False になる）。
     bad: list[bool] = []
 
     def _iter_part_rows():
         for part in m.get("parts", []):
             f = out_dir / part["name"]
-            if not f.is_file():                                   # 条件2
+            if not f.is_file():                                   # 条件4（part 実在）
                 bad.append(True)
                 return
             rows = _rows_from_part_text(f.read_text(enc))
-            if len(rows) != part.get("rows"):                     # 条件3
+            if len(rows) != part.get("rows"):                     # 条件4（行数一致）
                 bad.append(True)
                 return
             yield from rows
@@ -123,7 +123,7 @@ def is_complete(out_dir: Path, keyword: str, opts,
         sha = data_rows_sha256(_iter_part_rows())
     except (KeyError, TypeError, UnicodeDecodeError, OSError, LookupError):
         return False
-    if bad or sha != m.get("data_sha256"):                    # 条件4（書込側と同一関数）
+    if bad or sha != m.get("data_sha256"):                    # 条件4（sha・書込側と同一関数）
         return False
     if m.get("tool_version") != __version__:                  # 条件5
         return False

@@ -9,7 +9,7 @@ from grep_analyzer.classifiers.ast_base import node_at_line, parse_tree
 from grep_analyzer.embed_preprocess import host_grammar
 from grep_analyzer.proc_preprocess import exec_spans
 
-# ノード型集合（「ts_span 粒度」表と対応する）。
+# ノード型集合（「ast_span 粒度」表と対応する）。
 # tree-sitter ライブラリを更新したときは再点検すること。
 _GRAN_JAVA = {"if_statement", "while_statement", "for_statement",
               "switch_expression", "switch_statement",
@@ -87,7 +87,7 @@ def _resolve_sets(language: str):
     return None
 
 
-def ts_span(language: str, file_text: str, lineno: int, cache: dict | None = None):
+def ast_span(language: str, file_text: str, lineno: int, cache: dict | None = None):
     """選択範囲 [s,e]（0始まり物理行）を返す。取れなければ None（→fallback）。
 
     `cache` を渡すとファイル単位でパース木を共有し、classify/snippet/別行の再 parse を防ぐ。
@@ -128,7 +128,7 @@ def ts_span(language: str, file_text: str, lineno: int, cache: dict | None = Non
 def proc_exec_span(file_text: str, lineno: int):
     """ヒット行が Pro*C EXEC SQL 区間内なら生 EXEC 行のスパン [s,e] を返す。
 
-    区間外は None。proc 言語の ts_span の前段に呼ばれ、EXEC 区間を優先する。
+    区間外は None。proc 言語の ast_span の前段に呼ばれ、EXEC 区間を優先する。
     """
     hit = lineno - 1
     for span_start, span_end in exec_spans(file_text):

@@ -70,12 +70,12 @@ def test_unitフック強制スピルでも同一集合同一順序かつin_memo
     s.close()
 
 
-def test_maybe_spill_nowは閾値非経由で即スピルし透過(tmp_path):
+def test_force_spill_nowは閾値非経由で即スピルし透過(tmp_path):
     s = EdgeStore(tmp_path, MemoryBudget(None))
     e = (Occurrence("A", "a.c", 1), Occurrence("B", "b.c", 2))
     s.add(*e)
     assert s.spilled is False and s._force_spill_threshold is None
-    s.maybe_spill_now()
+    s.force_spill_now()
     assert s.spilled is True and s._force_spill_threshold is None  # フック不使用
     assert list(s.sorted_unique()) == [e] and s.in_memory_len() == 0
     s.close()

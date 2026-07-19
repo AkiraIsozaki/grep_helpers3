@@ -51,7 +51,7 @@ def _effective_use_ripgrep(explicit: bool | None, total_bytes: int, threshold: i
 
 
 def _direct_hits_for_keyword(keyword, lines, grep_name, grep_enc, source_root,
-                             opts, enc_memo, decode_cache, fb, lang_map, kw_diag):
+                             opts, enc_memo, decode_cache, fallback, lang_map, kw_diag):
     """1 keyword の grep 行から direct Hit のリストを構築する。
 
     grep 出力はファイル単位でヒットがまとまる（grep -rn / rg）。直前 1 ファイル分の
@@ -94,7 +94,7 @@ def _direct_hits_for_keyword(keyword, lines, grep_name, grep_enc, source_root,
                 else:
                     file_text, enc, replaced, language, dialect = meta_via_decode_cache(
                         enc_memo, decode_cache, str(target), relpath,
-                        raw, lang_map, fb, fast=opts.fast_encoding, sig=sig)
+                        raw, lang_map, fallback, fast=opts.fast_encoding, sig=sig)
                     sample = file_text[:LANG_SAMPLE_BYTES]
                     unsupported = (
                         not extension_resolves_language(relpath, lang_map)
@@ -173,7 +173,7 @@ def run(
             walk_diag.add("prefilter_auto_engaged",
                           f"total_bytes={total_bytes} threshold={opts.ripgrep_threshold_bytes}")
 
-        fb = list(opts.encoding_fallback) or DEFAULT_FALLBACK
+        fallback = list(opts.encoding_fallback) or DEFAULT_FALLBACK
         # run 共有 enc-memo：direct/seed/finalize の再読込で keyword をまたいで chardet を重複排除する
         # （jobs>1 の並列 SCAN は process-local の _WORKER_ENC を使い fork 越しに共有不可）。
         # キーは str(abspath)（未正規化）だが memo は純粋なのでキー差異は性能劣化に留まり出力不変。
@@ -225,13 +225,13 @@ def run(
             sample = grep_bytes[:_GREP_ENC_SAMPLE_BYTES]
             if len(sample) == _GREP_ENC_SAMPLE_BYTES:
                 sample = sample[:-3]
-            _, grep_enc, _ = decode_bytes(sample, fb, fast=opts.fast_encoding)
+            _, grep_enc, _ = decode_bytes(sample, fallback, fast=opts.fast_encoding)
             lines = grep_bytes.split(b"\n")
             if lines and lines[-1] == b"":
                 lines.pop()                       # 末尾改行による空要素（splitlines 相当）
             direct_hits[keyword] = _direct_hits_for_keyword(
                 keyword, lines, grep_file.name, grep_enc, source_root, opts,
-                enc_memo, decode_cache, fb, lang_map, kw_diag)
+                enc_memo, decode_cache, fallback, lang_map, kw_diag)
 
         # --- 3. states 構築（同一 keyword ソート順・keyword 別 indirect_diag） ---
         indirect_diag: dict[str, Diagnostics] = {}

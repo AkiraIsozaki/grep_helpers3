@@ -4,7 +4,7 @@ JS 規則は javascript_chaser から再利用する。tsx は language 引数�
 （parse は呼出側が行い、本モジュールは root のみ受ける）。
 """
 from grep_analyzer.classifiers.javascript_chaser import _BINDING as _JS_BINDING
-from grep_analyzer.classifiers.javascript_chaser import handle_js_binding as _handle_js
+from grep_analyzer.classifiers.javascript_chaser import _handle_js
 from grep_analyzer.classifiers.ast_base import node_text, run_field_chase
 
 _BINDING = _JS_BINDING | {"public_field_definition", "enum_declaration"}

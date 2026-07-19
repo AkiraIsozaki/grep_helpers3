@@ -84,7 +84,7 @@ class _FinalizeFileCache:
             self._total_chars -= 2 * len(old_text)
         return entry
 
-    def _load(self, relpath: str) -> tuple[str, list[str], str, str]:
+    def _load(self, relpath: str) -> tuple[str, list[str], str, str, dict]:
         state = self._state
         opts = state.options
         read_failed = False

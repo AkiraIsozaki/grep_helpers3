@@ -1,13 +1,13 @@
 """snippet 切り出しのパッケージである。
 
-公開エントリは build_snippet。clamp_lines / heuristic_span / ts_span / proc_exec_span は
+公開エントリは build_snippet。clamp_lines / heuristic_span / ast_span / proc_exec_span は
 テスト用に再 export する。
 """
 
 from grep_analyzer.snippet._clamp import clamp_lines
 from grep_analyzer.snippet._heuristic import heuristic_span
 from grep_analyzer.snippet._sanitize_line import _physical_lines
-from grep_analyzer.snippet._ts import proc_exec_span, ts_span
+from grep_analyzer.snippet._ast import ast_span, proc_exec_span
 from grep_analyzer.embed_preprocess import effective_language, jsp_region_span
 from grep_analyzer.tsv import sanitize_field
 
@@ -15,7 +15,7 @@ __all__ = [
     "build_snippet",
     "clamp_lines",
     "heuristic_span",
-    "ts_span",
+    "ast_span",
     "proc_exec_span",
 ]
 
@@ -25,9 +25,9 @@ def build_snippet(language: str, dialect: str, file_text: str,
                   lines: list[str] | None = None) -> str:
     """snippet 切り出しのエントリである。確定済み 1 セル文字列を返す。
 
-    java/c: ts_span → None なら ヒット 1 行（java/c に heuristic は適用しない）。
-    proc: proc_exec_span → ts_span("proc") → None なら ヒット 1 行。
-    sql/shell/perl/groovy: heuristic_span（AST 非使用）。
+    java/c/python/js/ts/tsx: ast_span → None なら ヒット 1 行（heuristic は適用しない）。
+    proc: proc_exec_span → ast_span("proc") → None なら ヒット 1 行。
+    jsp: jsp_region_span。sql/shell/perl/groovy: heuristic_span（AST 非使用）。
     `dialect` は将来 cshell 境界用の予約引数（現行は未使用・呼出互換のため受領）。
     各行へ sanitize_field を適用して clamp_lines へ渡す。SEP 衝突エスケープは
     clamp_lines が truncation 後の最終段で行う（#J: 切り詰めが escape を割らない）。
@@ -39,11 +39,11 @@ def build_snippet(language: str, dialect: str, file_text: str,
     language = effective_language(language, file_text, lineno, cache=cache)
     span = None
     if language in ("java", "c", "python", "javascript", "typescript", "tsx"):
-        span = ts_span(language, file_text, lineno, cache=cache)
+        span = ast_span(language, file_text, lineno, cache=cache)
     elif language == "proc":
         span = proc_exec_span(file_text, lineno)
         if span is None:
-            span = ts_span("proc", file_text, lineno, cache=cache)
+            span = ast_span("proc", file_text, lineno, cache=cache)
     elif language == "jsp":
         span = jsp_region_span(file_text, lineno)
     elif language in ("sql", "shell", "perl", "groovy"):

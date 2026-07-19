@@ -7,7 +7,7 @@ from grep_analyzer.classifiers.regex_classifier import (
     classify_shell,
     classify_sql,
 )
-from grep_analyzer.classifiers.ts_classifier import classify_ts
+from grep_analyzer.classifiers.ast_classifier import classify_ast
 from grep_analyzer.embed_preprocess import effective_language
 
 # 正規表現分類へ渡す content の上限（#L）。sql/perl/shell は従来 uncapped で、
@@ -29,7 +29,7 @@ def classify_hit(
     language = effective_language(language, file_text, lineno, cache=cache)
     if language in ("java", "c", "proc", "python", "javascript", "typescript",
                     "tsx", "jsp", "angular", "angular_inline"):
-        return classify_ts(language, file_text, lineno, cache=cache)
+        return classify_ast(language, file_text, lineno, cache=cache)
     if language == "html":
         return ("その他", "high")
     content = content[:_CLASSIFY_LINE_CAP]      # per-hit コストを有界化（#L）

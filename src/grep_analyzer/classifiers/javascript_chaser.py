@@ -1,6 +1,6 @@
 """JavaScript の AST chaser を提供する（field-directed）。
 
-`handle_js_binding` / `_BINDING` は typescript_chaser と共有する。
+`_handle_js` / `_BINDING` は typescript_chaser と共有する（package 内共有の契約）。
 """
 from grep_analyzer.classifiers.ast_base import node_text, run_field_chase
 
@@ -59,7 +59,7 @@ def _declarators(decl, is_const, consts, vars_):
             _names_from_pattern(name, target)
 
 
-def handle_js_binding(node, lineno, consts, vars_, getters, setters):
+def _handle_js(node, lineno, consts, vars_, getters, setters):
     t = node.type
     if t == "lexical_declaration":
         is_const = any(not c.is_named and node_text(c) == "const"
@@ -102,4 +102,4 @@ def extract_tree(language, root, lineno):
     """parse 済 root から JS 束縛を field-directed・multi-node 抽出する。"""
     return run_field_chase(
         root, lineno, _BINDING,
-        lambda node, c, v, g, s: handle_js_binding(node, lineno, c, v, g, s))
+        lambda node, c, v, g, s: _handle_js(node, lineno, c, v, g, s))

@@ -79,7 +79,7 @@ def node_at_line(root, lineno: int):
     """対象行（lineno は 1 始まり）を内包する最小ノードを決定的に返す。
 
     `_span_key`（行スパン, start_byte, end_byte, 型）の最小で一意選択する。
-    classify_ts と snippet/_ts.py が共有する。
+    classify_ast と snippet/_ts.py が共有する。
     """
     return min(_nodes_covering(root, lineno - 1), key=_span_key, default=None)
 

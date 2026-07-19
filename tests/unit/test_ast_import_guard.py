@@ -5,9 +5,9 @@ import sys
 
 
 def test_tree_sitterパッケージ未importでもclassifyがimportできる(monkeypatch):
-    # ts_classifier と classify をキャッシュから外し、tree_sitter_* の import を失敗させる。
+    # ast_classifier と classify をキャッシュから外し、tree_sitter_* の import を失敗させる。
     # テスト分離: sys.modules を操作するため、影響キーのスナップショットを取り finally で
-    # 完全復元する（さもないと ts_classifier が二重化し、後続テストの monkeypatch が
+    # 完全復元する（さもないと ast_classifier が二重化し、後続テストの monkeypatch が
     # chase.parse_tree の実体に効かなくなる＝テスト汚染）。
     prefixes = ("grep_analyzer.classif", "tree_sitter")
     saved = {k: v for k, v in sys.modules.items() if k.startswith(prefixes)}

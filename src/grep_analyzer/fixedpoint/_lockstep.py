@@ -77,14 +77,14 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
             for kw, st in states_by_kw.items():
                 apply_global_cap(st)
                 maybe_spill(st, ghop)
-                sc = {s for s in st.chase_active if s not in st.capped}
-                stm = {s for s in st.terminal_active if s not in st.capped}
+                scan_chase = {s for s in st.chase_active if s not in st.capped}
+                scan_term = {s for s in st.terminal_active if s not in st.capped}
                 st.chase_done |= st.chase_active
                 st.chase_active = set()
                 st.terminal_done |= st.terminal_active
                 st.terminal_active = set()
-                per_kw[kw] = (sc, stm)
-                union |= sc | stm
+                per_kw[kw] = (scan_chase, scan_term)
+                union |= scan_chase | scan_term
             scan_symbols = sorted(union)
             if not scan_symbols or ghop > opts.max_depth:
                 break
@@ -99,8 +99,8 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
                                            on_degrade=degrade_reasons.append)
                 for reason in degrade_reasons:
                     for kw, st in states_by_kw.items():
-                        sc_k, stm_k = per_kw[kw]
-                        if sc_k or stm_k:
+                        chase_k, term_k = per_kw[kw]
+                        if chase_k or term_k:
                             st.diagnostics.add("prefilter_disabled",
                                                f"hop={ghop} reason={reason}")
                 if union_keep is not None:
@@ -115,12 +115,12 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
                 file_cache=file_cache, pool=pool, enc_memo=enc_memo,
                 progress=progress, hop_no=ghop, decode_cache=decode_cache)
             # automaton_split は共有走査ゆえ global hop ごとに1回だけ付与する（出力中立）。
-            # その hop に live 記号（sc|stm）を持つ keyword のみに付与する
+            # その hop に live 記号（scan_chase|scan_term）を持つ keyword のみに付与する
             # （逐次版で走査しない kw は automaton_split を記録しないため）。
             if nchunks > 1:
                 for kw, st in states_by_kw.items():
-                    sc_k, stm_k = per_kw[kw]
-                    if sc_k or stm_k:
+                    chase_k, term_k = per_kw[kw]
+                    if chase_k or term_k:
                         st.diagnostics.add(
                             "automaton_split", f"hop={ghop} chunks={n_actual_chunks}")
             # 縮退不足（max_passes 頭打ちでも予算超過が残る）を live keyword に可視化する（#F）。
@@ -128,8 +128,8 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
                                     budget=next(iter(states_by_kw.values())).budget,
                                     states=list(states_by_kw.values())):
                 for kw, st in states_by_kw.items():
-                    sc_k, stm_k = per_kw[kw]
-                    if sc_k or stm_k:
+                    chase_k, term_k = per_kw[kw]
+                    if chase_k or term_k:
                         st.diagnostics.add(
                             "degrade_chunk_capped",
                             f"hop={ghop} chunks={n_actual_chunks} union={len(scan_symbols)}")
@@ -143,14 +143,14 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
             # - prefilter OFF（keep=None／非 ASCII 記号で全件走査）: FULL pass_results をそのまま渡す。
             #   単一 keyword では union_keep も全件なので逐次版と byte 同値。
             # - prefilter ON（union_keep が絞り込み集合）: keyword K 自身の
-            #   keep_K = prefilter(sorted(sc|stm), restrict_to=union_keep) | unsafe_rels で
+            #   keep_K = prefilter(sorted(scan_chase|scan_term), restrict_to=union_keep) | unsafe_rels で
             #   絞った pass_results を渡す。共有復号/automaton は1回のまま。per-keyword
             #   prefilter は rg subprocess を K 本追加 spawn するが、探索対象を全コーパスでなく
             #   union_keep に限定するため各走査は union_keep 分のみ（巨大コーパスで効く）。
             #   keep_K ⊆ union_keep（記号集合の部分集合性ゆえ部分文字列マッチも上位集合）が
             #   保証するので、探索空間を union_keep に絞っても結果集合は全コーパス走査と同一。
             for kw, st in states_by_kw.items():
-                sc, stm = per_kw[kw]
+                scan_chase, scan_term = per_kw[kw]
                 kw_results = pass_results
                 # per-keyword 絞り込みは global prefilter が効いた（union_keep が集合の）ときだけ行う。
                 # union_keep が縮小集合なら keep_k ⊆ union_keep で各 rg は安価。
@@ -166,13 +166,13 @@ def run_fixedpoint_multi(states_by_kw, source_root, opts, *, files,
                 if opts.perkw_diag and opts.use_ripgrep and union_keep is not None:
                     # 探索対象を全コーパス `.` ではなく union_keep に限定する
                     # （keep_k ⊆ union_keep なので結果は同集合・探索空間のみ縮小）。
-                    keep_k = _rg.prefilter(source_root, rel_to_abs, sorted(sc | stm),
+                    keep_k = _rg.prefilter(source_root, rel_to_abs, sorted(scan_chase | scan_term),
                                            restrict_to=union_keep)
                     if keep_k is not None:
                         keep_k = keep_k | unsafe_rels
                         kw_results = [r for r in pass_results if r[0] in keep_k]
                     # keep_k is None（非 ASCII 記号 → 全件走査）の場合は FULL のままにする
-                absorb_results(st, kw_results, sc, stm, ghop)
+                absorb_results(st, kw_results, scan_chase, scan_term, ghop)
             progress.hop(ghop, len(scan_symbols), len(scan_files))
             ghop += 1
         result = {kw: build_indirect_hits(st) for kw, st in states_by_kw.items()}

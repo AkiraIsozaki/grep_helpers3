@@ -3,7 +3,7 @@
 - apply_global_cap: --memory-limit / --max-symbols でシンボル集合を切り詰める。
   決定的（キー: (symbol_hop, len(s), s)）。
 - maybe_spill: in-memory edge 数と introducers 数で予算超過を判定し、
-  超過時に edge_store.maybe_spill_now() を呼ぶ。diag は 1 度だけ記録。
+  超過時に edge_store.force_spill_now() を呼ぶ。diag は 1 度だけ記録。
 - compute_nchunks_union: lock-step 共有エンジンの union 予算版。1 hop の chunk 数を
   予算と force_chunks から決める（chase_active/terminal_active を空にした直後に呼ぶ前提）。
 """
@@ -53,7 +53,7 @@ def maybe_spill(state: ChaseState, hop: int):
     if state.budget.exceeded(_budget.estimate_items(
             n_symbols=n_live, n_edges=state.edge_store.in_memory_len(),
             n_intro=n_intro)):
-        state.edge_store.maybe_spill_now()
+        state.edge_store.force_spill_now()
         if not state.spill_logged:
             state.diagnostics.add("graph_spilled", f"hop={hop}")
             state.spill_logged = True

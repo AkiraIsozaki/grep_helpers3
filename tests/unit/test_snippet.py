@@ -48,45 +48,45 @@ def test_境界未検出でも有限():
     assert (e - s + 1) <= 12
 
 
-from grep_analyzer.snippet import ts_span
+from grep_analyzer.snippet import ast_span
 
 
 def test_java_単純文は当該statement物理行スパン():
-    assert ts_span("java", "class A {\n  int x =\n    1 + 2;\n}\n", 2) == (1, 2)
+    assert ast_span("java", "class A {\n  int x =\n    1 + 2;\n}\n", 2) == (1, 2)
 
 
 def test_java_if条件部のみ本体非包含():
     src = "class A { void m(int s){\n  if (s\n      == 1) {\n    g();\n  }\n}}\n"
-    assert ts_span("java", src, 2) == (1, 2)
+    assert ast_span("java", src, 2) == (1, 2)
 
 
 def test_同一行複数statementは行頭statement_列非依存():
-    assert ts_span("java", "class A { void m(){\n a(); b(); c();\n}}\n", 2) == (1, 1)
+    assert ast_span("java", "class A { void m(){\n a(); b(); c();\n}}\n", 2) == (1, 1)
 
 
 def test_if条件に文字列内括弧があっても条件部のみ():
     src = ('class A{ void m(String s){\n if (s.equals(")")\n'
            '   || s.isEmpty()) {\n  g();\n }\n}}\n')
-    assert ts_span("java", src, 2) == (1, 2)
+    assert ast_span("java", src, 2) == (1, 2)
 
 
 def test_parse不能はNone():
-    assert ts_span("java", "@@@@@\n", 1) is None
+    assert ast_span("java", "@@@@@\n", 1) is None
 
 
 def test_無関係エラーがあっても健全行はスパン維持_祖先遡上しない():
     # 3行目のみ破損。2行目の宣言は健全 → None でなくその行スパン
-    assert ts_span("java", "class A{\n int ok = 1;\n void @@@ broken\n}\n", 2) \
+    assert ast_span("java", "class A{\n int ok = 1;\n void @@@ broken\n}\n", 2) \
         == (1, 1)
 
 
 def test_選択文の内部にエラーがあればNone():
-    assert ts_span("c", "int f(){\n int x = (1 +\n}\n", 2) is None
+    assert ast_span("c", "int f(){\n int x = (1 +\n}\n", 2) is None
 
 
 def test_proc_非EXEC_C文はmask後にCノード規則():
     # 生 EXEC が C パースを壊さない（mask_exec_sql 後・行番号保存）
-    assert ts_span("proc", "int g = 1\n  + 2;\nEXEC SQL SELECT 1 ;\n", 1) \
+    assert ast_span("proc", "int g = 1\n  + 2;\nEXEC SQL SELECT 1 ;\n", 1) \
         == (0, 1)
 
 
@@ -108,7 +108,7 @@ def test_java_複数行宣言を1セルへ連結():
 
 
 def test_java_if条件行スパン_行末ブレース同居_本体後続行非包含():
-    # ts_span (1,2)。行単位切出のため行2末尾の ` {` は同一物理行ゆえ含む。
+    # ast_span (1,2)。行単位切出のため行2末尾の ` {` は同一物理行ゆえ含む。
     # 本体 g(); 等の後続行は非包含（spec §9 表）。
     src = "class A{ void m(int s){\n  if (s\n      == 1) {\n    g();\n  }\n}}\n"
     assert build_snippet("java", "bourne", src, 2) == "  if (s \\n       == 1) {"
@@ -136,18 +136,18 @@ def test_区切り衝突はバックスラッシュ二重化_サニタイズ後(
 
 
 def test_python_複数行代入スパン():
-    from grep_analyzer.snippet import ts_span
-    assert ts_span("python", "X = (\n  1 + 2\n)\n", 1) == (0, 2)
+    from grep_analyzer.snippet import ast_span
+    assert ast_span("python", "X = (\n  1 + 2\n)\n", 1) == (0, 2)
 
 
 def test_python_単純文1行():
-    from grep_analyzer.snippet import ts_span
-    assert ts_span("python", "a = 1\nb = 2\n", 1) == (0, 0)
+    from grep_analyzer.snippet import ast_span
+    assert ast_span("python", "a = 1\nb = 2\n", 1) == (0, 0)
 
 
 def test_js_複数行宣言スパン():
-    from grep_analyzer.snippet import ts_span
-    assert ts_span("javascript", "const X =\n  1 + 2;\n", 1) == (0, 1)
+    from grep_analyzer.snippet import ast_span
+    assert ast_span("javascript", "const X =\n  1 + 2;\n", 1) == (0, 1)
 
 
 def test_build_snippet_python():
@@ -169,9 +169,9 @@ def test_html_snippetは1行():
 
 
 def test_build_snippet_inline_template行は1行():
-    # const 宣言で包むと未 routing 時 ts_span が宣言全体（巨大スパン）を返すため
+    # const 宣言で包むと未 routing 時 ast_span が宣言全体（巨大スパン）を返すため
     # routing（angular_inline→1行）の効果を観測できる（@Component デコレータ形は
-    # ts_span が None を返し元から1行＝routing 効果が出ない・spec §7 巨大スパン回避）。
+    # ast_span が None を返し元から1行＝routing 効果が出ない・spec §7 巨大スパン回避）。
     src = ('export const C = defineComponent({\n'   # 1
            '  template: `\n'                         # 2
            '    <p>{{ TRACKED }}</p>\n'             # 3 (hit)

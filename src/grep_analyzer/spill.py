@@ -3,7 +3,7 @@
 sorted_unique は in-memory/spill いずれでも sorted(set(edges)) と同一である（決定的）。
 スピル済の確定は全件をメモリへ読み戻さず、チャンクソート済み run のマージで
 ストリーミングする（メモリ有界＝スピルの目的を確定段でも保つ）。
-in_memory_len はメモリ常駐数を返す（スピル後 0）。maybe_spill_now は engine 用で
+in_memory_len はメモリ常駐数を返す（スピル後 0）。force_spill_now は engine 用で
 内部 _spill_now を直呼びする（_force_spill_threshold は unit テスト専用）。
 """
 
@@ -93,7 +93,7 @@ class EdgeStore:
         if over:
             self._spill_now()
 
-    def maybe_spill_now(self) -> None:
+    def force_spill_now(self) -> None:
         """engine priority-2 用で、予算判定に依らず即スピルする（フック非経由）。"""
         if not self.spilled:
             self._spill_now()
