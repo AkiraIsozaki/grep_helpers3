@@ -38,6 +38,8 @@ java / c / proc（Pro\*C `.pc`）/ sql（PL/SQL 一族 `.pkb` `.pks` `.prc` ほ�
 
 Python は **3.12** 縛り。外の網（ネットワーク）が使えねえ現場でも困らねえよう、車輪は `wheelhouse/` に、ripgrep の刃物は `src/grep_analyzer/vendor/` に、みんな同梱してございます。
 
+ただし**この長屋は Linux（x86_64 / aarch64）専用**でございます。同梱の wheel も ripgrep も Linux 向けしか入っておりませんので、Windows の現場へ持ち出すなら Windows 用 wheel（pyahocorasick / tree_sitter 一族）と `rg.exe` を別途ご用意のうえ、動作確認してからにしておくんなさい。
+
 ```bash
 pip install --no-index --find-links wheelhouse -e .        # 使うだけなら
 pip install --no-index --find-links wheelhouse -e ".[dev]" # 開発もするなら（pytest 入り）
@@ -113,7 +115,7 @@ python -m pytest tests/unit # 手早く
 ```
 
 この長屋の掟は **TDD**。まず赤い提灯（失敗するテスト）を下げてから、青くする。golden テストは「出力バイト同一」の証文でございますから、出力を変える普請のときは覚悟してかかっておくんなさい。設計の経緯は `docs/superpowers/` の下に綴ってあります。
-
+　
 ---
 
 八っつぁん「へえ、大したもんだ。で、ご隠居、こいつの名は何てえんです」

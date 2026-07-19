@@ -8,10 +8,15 @@ from grep_analyzer.fixedpoint import _scan
 from grep_analyzer.pipeline import _default_opts, run
 
 
-def test_worker_initはmax_bytesをworker_decode_cacheへ伝える_F3(tmp_path):
+def test_worker_initはmax_bytesをworker_decode_cacheへ伝える_F3(tmp_path, monkeypatch):
     # --jobs>1 で worker が上限を無視すると --decode-cache-max-bytes が効かない。
-    _scan._worker_init({}, ["cp932"], 2, str(tmp_path), "", False, 12345)
-    assert _scan._WORKER_DECODE_CACHE._max_bytes == 12345
+    # main プロセスのモジュールグローバルを汚したまま残さない（順序依存の火種）。
+    saved = _scan._WORKER_DECODE_CACHE
+    try:
+        _scan._worker_init({}, ["cp932"], 2, str(tmp_path), "", False, 12345)
+        assert _scan._WORKER_DECODE_CACHE._max_bytes == 12345
+    finally:
+        _scan._WORKER_DECODE_CACHE = saved
 
 
 def test_runは古いroot_realpathキャッシュをクリアする_F2(tmp_path):

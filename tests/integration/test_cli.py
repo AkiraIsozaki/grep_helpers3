@@ -21,7 +21,7 @@ def test_必須引数で実行しexit0とTSVを返す(tmp_path: Path):
 
 def test_use_ripgrep既定はNone_閾値判定():
     """rg prefilter は既定=閾値判定(None)。フラグ無しは None で、実効可否は
-    後段（threshold+availability）で決まる。明示 True/False のみ強制（spec rev.2）。"""
+    後段（threshold+availability）で決まる。明示 True/False のみ強制する。"""
     from grep_analyzer.cli import _build_opts
     o = _build_opts(["--input", "i", "--output", "o", "--source-root", "s"])
     assert o.use_ripgrep is None

@@ -51,7 +51,7 @@ python -m grep_analyzer \
 
 | フラグ | 効果 | 出力 |
 |---|---|---|
-| `--jobs N` | 走査を N 並列化（**既定 auto=CPU数**）。`pool.map` は順序保存なので結果は不変。共有マシン等で絞りたいときだけ明示指定。 | バイト不変 |
+| `--jobs N` | 走査を N 並列化（**既定 auto=CPU数**）。`imap_unordered` の完了順に依らず relpath 集約後に再ソートするため結果は不変。共有マシン等で絞りたいときだけ明示指定。 | バイト不変 |
 | `--decode-cache-dir DIR` | 復号＋言語判定を「ファイル(mtime/size)単位で1回」に固定し、hop・worker・**run をまたいで再利用**。direct/seed/scan/finalize の全経路が同一キャッシュを共有する（realpath 正規化）。2 回目以降の run は変更の無いファイルを再復号しない。 | バイト不変 |
 | `--decode-cache-max-bytes N` | 永続キャッシュの上限。超過時に古い順で退避（LRU）。**run をまたいで `--decode-cache-dir` を使うなら推奨**（無制限だと下記の ~1.5× footprint で無制限に肥大する）。 | バイト不変（退避は再復号に降格するだけ） |
 | `--progress on/off` | walk 列挙中の件数と、hop 内の走査途中経過を stderr に出す（**進行中か停止中かが分かる**）。**既定 on**。ログを静かにしたいときは `--progress off`。 | バイト不変（stderr のみ） |

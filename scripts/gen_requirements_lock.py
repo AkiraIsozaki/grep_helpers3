@@ -17,7 +17,10 @@ import re
 import sys
 from pathlib import Path
 
-WH = Path("wheelhouse")
+# CWD 非依存（リポジトリルート以外から実行すると空 wheelhouse から 0 パッケージの
+# lock を CWD に生成してしまう）。__file__ 基準でルートを解決する。
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+WH = _REPO_ROOT / "wheelhouse"
 by_pkg: dict[str, dict[str, list[str]]] = {}  # pkg -> {ver -> [sha, ...]}
 n_whl = 0
 for whl in sorted(WH.glob("*.whl")):
@@ -38,5 +41,5 @@ for pkg in sorted(by_pkg):
     ver, shas = next(iter(vers.items()))
     hashes = " ".join(f"--hash=sha256:{h}" for h in sorted(set(shas)))
     out.append(f"{pkg}=={ver} {hashes}")
-Path("requirements.lock").write_text("\n".join(out) + "\n", "utf-8")
+(_REPO_ROOT / "requirements.lock").write_text("\n".join(out) + "\n", "utf-8")
 print(f"requirements.lock 生成: {len(out)} packages / {n_whl} wheels")

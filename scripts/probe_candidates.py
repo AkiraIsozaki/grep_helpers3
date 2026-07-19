@@ -67,22 +67,34 @@ def measure(symbols, source_root: Path) -> dict:
     non_utf8 に算入）＝chardet がファイル単位で走るため意図的な近似。
     """
     source_root = Path(source_root)
+    # .git 等の管理ディレクトリを除外する（本体 walk の既定除外との乖離を減らし、
+    # 60GB コーパスで無関係な巨大 blob を母集団に混ぜない）。
     rel_to_abs = {p.relative_to(source_root).as_posix(): p
-                  for p in source_root.rglob("*") if p.is_file()}
+                  for p in source_root.rglob("*")
+                  if p.is_file() and ".git" not in p.relative_to(source_root).parts}
     keep = ripgrep.prefilter(source_root, rel_to_abs, sorted(symbols))
     if keep is None:
         keep = set(rel_to_abs)
+    # 判定は先頭サンプルで足り、全量 read_bytes は巨大ファイル 1 つで OOM し得る。
+    sample_bytes = 4 * 1024 * 1024
     total = nonutf8 = 0
     for rel in keep:
         ap = rel_to_abs.get(rel)
         if ap is None:
             continue
-        raw = ap.read_bytes()
-        total += len(raw)
         try:
-            raw.decode("utf-8")
+            size = ap.stat().st_size
+            with open(ap, "rb") as f:
+                head = f.read(sample_bytes)
+        except OSError:
+            continue
+        total += size
+        if len(head) == sample_bytes:
+            head = head[:-3]                  # サンプル境界でのマルチバイト分断を除外
+        try:
+            head.decode("utf-8")
         except UnicodeDecodeError:
-            nonutf8 += len(raw)
+            nonutf8 += size
     return {"candidate_files": len(keep), "candidate_bytes": total,
             "non_utf8_bytes": nonutf8,
             "non_utf8_ratio": (nonutf8 / total) if total else 0.0}

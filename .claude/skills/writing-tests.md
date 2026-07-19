@@ -5,7 +5,7 @@ description: テストの新規作成・修正時に適用する方針。pytest 
 
 # テストの書き方
 
-> 本ツール（grep_analyzer）の設計は `docs/superpowers/specs/2026-05-16-grep-analyzer-design.md` §11 を参照。本書とspecが齟齬する場合はspecを正とする。
+> 本ツール（grep_analyzer）の設計 spec は歴史的に `2026-05-16-grep-analyzer-design.md` を正としてきたが、**同ファイルはリポジトリに存在しない**（テスト・設定中の「spec §11」「spec §9」等の参照はこの不在 spec の節番号）。現存する設計文書は `docs/superpowers/specs/2026-06-14-grep-analyzer-perf-design.md` と `docs/superpowers/specs/2026-06-20-grep-analyzer-refactor-design.md`。§ 参照は「当時の設計判断のラベル」として読み、実挙動と齟齬する場合は**テストが固定する実挙動を正とする**。
 
 ## 基本姿勢
 - **古典学派 (Detroit) + TDD** を基本とする。
@@ -54,7 +54,9 @@ description: テストの新規作成・修正時に適用する方針。pytest 
 
 ### 呼び出しスタイル
 - **既定は in-process** (`from grep_analyzer.cli import main; rc = main(argv)`)
-- subprocess は smoke の `--help` 1 本だけ（packaging 検証）
+- subprocess は「プロセス境界そのものが検証対象」のときのみ許可: smoke の `--help`
+  （packaging 契約）、クロスプロセス決定性（PYTHONHASHSEED 変化）、vendor packaging、
+  実 ripgrep 連携、spill 残骸の跨プロセス掃除。上記以外の新規 subprocess は不可
 
 ### アサーション
 - **検証したい契約だけを点で確認**。1 テスト = 1 契約
@@ -85,6 +87,9 @@ description: テストの新規作成・修正時に適用する方針。pytest 
 ---
 
 ## Handcrafted (`tests/handcrafted/`)
+
+> **未実装の構想層**（ディレクトリ未作成）。以下は導入する場合の方針であり、
+> 現存するのは unit / integration / golden / perf / smoke の 5 層のみ。
 
 | 軸 | 方針 |
 |---|---|

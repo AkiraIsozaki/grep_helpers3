@@ -78,7 +78,7 @@ def test_chardet回数はユニークファイル数以下_cp932(tmp_path, monke
 
     jobs=1（in-process）限定：chardet spy は同一プロセス前提。並列の回数検証はしない
     （並列は worker 毎 _WORKER_ENC ＝プロセス跨ぎ共有不可）。spy は呼び出し回数カウンタ
-    （len(b) ではない＝同長ファイル衝突による過小カウントを排除・rev.2 H-4）。
+    （len(b) ではない＝同長ファイル衝突による過小カウントを排除・H-4）。
     """
     import dataclasses
     import grep_analyzer.encoding as e

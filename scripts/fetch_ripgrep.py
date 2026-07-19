@@ -26,7 +26,8 @@ TARGETS = {
         f"ripgrep-{VERSION}-x86_64-unknown-linux-musl/rg",
     ),
 }
-VENDOR = Path("src/grep_analyzer/vendor/ripgrep")
+# CWD 非依存（別ディレクトリから実行すると CWD 配下に vendor を作ってしまう）。
+VENDOR = Path(__file__).resolve().parent.parent / "src/grep_analyzer/vendor/ripgrep"
 
 
 def _check_sha256(blob: bytes, expected: str) -> None:

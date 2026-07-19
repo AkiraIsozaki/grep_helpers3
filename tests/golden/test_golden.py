@@ -8,19 +8,23 @@ from grep_analyzer import resume
 from grep_analyzer.pipeline import _default_opts, run
 
 
+_KNOWN_OPTS_KEYS = {"follow_symlinks", "output_encoding", "resume",
+                    "assert_resume_complete"}
+
+
 def _opts_for(case: Path):
-    """ケース任意 opts.json を _default_opts へ反映（無ければ既定）。"""
+    """ケース任意 opts.json を _default_opts へ反映（無ければ既定）。
+
+    未知キーは黙って既定値で走らせず fail する（キー名 typo が静かに常緑になる穴）。
+    """
     cfg = case / "opts.json"
     o = _default_opts()
     if cfg.is_file():
         d = json.loads(cfg.read_text("utf-8"))
-        repl = {}
-        if "follow_symlinks" in d:
-            repl["follow_symlinks"] = d["follow_symlinks"]
-        if "output_encoding" in d:
-            repl["output_encoding"] = d["output_encoding"]
-        if "resume" in d:
-            repl["resume"] = d["resume"]
+        unknown = set(d) - _KNOWN_OPTS_KEYS
+        assert not unknown, f"opts.json 未知キー: {sorted(unknown)} ({cfg})"
+        repl = {k: d[k] for k in ("follow_symlinks", "output_encoding", "resume")
+                if k in d}
         o = dataclasses.replace(o, **repl)
     return o
 
@@ -32,7 +36,11 @@ def test_合成ケースのTSVが期待値と完全一致する(golden_case, tmp
              source_root=golden_case / "src", opts=opts)
     assert rc == 0
     sr = str(Path(golden_case / "src").resolve())            # spec §11(b)
-    for expected in sorted((golden_case / "expected").glob("*.tsv")):
+    expected_files = sorted((golden_case / "expected").glob("*.tsv"))
+    # 期待値 0 件だと以降のループが何も比較せず常緑になる（新規ケースの expected
+    # 配置忘れが黙って通る）。1 件以上の比較を強制する。
+    assert expected_files, f"expected/*.tsv がありません: {golden_case}"
+    for expected in expected_files:
         keyword = expected.stem
         mpath = out / f"{keyword}.manifest.json"
         enc = "utf-8-sig"
@@ -44,7 +52,7 @@ def test_合成ケースのTSVが期待値と完全一致する(golden_case, tmp
         # ＝2行目以降が絶対パスで残り環境依存になる。chain_multipath 等
         # 複数 file 行ケースで顕在）。file 列は各行で snippet より前なので
         # 行内の最初の SR+"/" が file セル（keyword/language 列は SR を
-        # 含まない＝golden が保証。新規ケースは上記 Task11 制約で担保）。
+        # 含まない＝golden が保証。新規ケースは上記の命名制約で担保）。
         actual = "".join(
             (ln.replace(sr + "/", "{SOURCE_ROOT}/", 1)
              if (sr + "/") in ln else ln)

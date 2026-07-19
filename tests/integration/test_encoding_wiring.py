@@ -137,7 +137,7 @@ def test_automaton分割発火構成でfallback鎖が届く(tmp_path, monkeypatc
     # させた構成（test_fixedpoint.py:212 同型）で F.java を走査し、鎖が
     # decode 経路へ届けば 2 鎖で ZED.tsv が変わる。
     # 【検出範囲の明示・実測知見】本テストは「全 decode 経路が DEFAULT 化
-    # （Task1 のみ＝未配線）か否か」を RED→GREEN で駆動する wiring スモーク
+    # （実装のみ＝未配線）か否か」を RED→GREEN で駆動する wiring スモーク
     # であり、`:248` 配線済で `:264` のみ漏れた状態を単独分離検出はしない
     # （F.java の最終 encoding/snippet は実コード上 :313 の indirect 再構成
     # ＋_scan_file encoding_of 由来で表面化し :264 単独では不変なため）。

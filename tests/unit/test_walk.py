@@ -181,7 +181,7 @@ def test_collect_files_exはlargeを除外しtotalに含めずbinary診断を発
     assert "walk_skipped_binary" in rendered and "b.bin" in rendered # binary 診断
 
 
-# === GUARD 1: 8KiB→64KiB バイナリ検出窓の差分を回帰固定（Phase2 統合レビュー） ===
+# === GUARD 1: 8KiB→64KiB バイナリ検出窓の差分を回帰固定 ===
 # _classify_bytes/collect_files_ex は 64KiB(_PREFIX)、legacy _is_binary/walk_files は 8KiB。
 # 8〜64KiB の窓に NUL があるファイルで両者が分岐することを LIVE で固定する。
 

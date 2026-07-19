@@ -1,4 +1,4 @@
-"""Phase 3 CLI フラグの EngineOptions 反映（spec §10.4 / WS1-4-6）。"""
+"""CLI フラグの EngineOptions 反映（spec §10.4 / WS1-4-6）。"""
 
 from grep_analyzer.cli import _build_opts
 

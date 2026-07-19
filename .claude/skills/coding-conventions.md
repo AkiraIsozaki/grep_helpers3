@@ -118,7 +118,7 @@ Related: spec §8.2
 
 - **1 ファイル 1 責務**。ファイルが大きくなったら責務別に分割する（snippet/ や fixedpoint/ のようにサブパッケージ化）
 - **用途別サブモジュール**: regex 等を `_patterns.py` 単一ファイルに全部入れない。用途ごとに分ける（`snippet_boundaries.py` / `literal_masking.py` / `symbol_extraction.py`）
-- **層分離（葉→根の一方向、循環禁止）**: `patterns/*` は何にも依存しない葉。`classifiers/*` は `patterns/*` と `model` のみ。下位が上位（pipeline/cli）を import しない
+- **層分離（葉→根の一方向、循環禁止）**: `patterns/*` は何にも依存しない葉。`classifiers/*` は `patterns/*`・`model`・`embed_preprocess`（ホスト逆マスク＝ast_base の parse 前処理）のみ。下位が上位（pipeline/cli）を import しない
 - **DRY 誤適用防止**: 「偶然 2 箇所が同じ形」を安易に寄せない。集約前に (1) 同一知識か（片方だけ変わるシナリオが想像できるなら寄せない）、(2) 同じ用語で説明できるか、(3) Rule of Three（3 箇所目が出てから抽象化）を確認する
 
 ## 実装の罠（今回ハマった点）

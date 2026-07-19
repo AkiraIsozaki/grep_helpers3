@@ -10,8 +10,10 @@ __pycache__/
 venv/
 # `python -m build`（vendor packaging テスト等）が生成する成果物。
 # wheelhouse/ はコミット対象だが build/・dist/ は成果物なので無視。
-build/
-dist/
+# ルートにアンカーする（非アンカーだと tests/golden/cases/**/src/build/ 等の
+# fixture を静かに飲み込み、フレッシュクローンでテストが変質する）。
+/build/
+/dist/
 
 # Claude Code worktrees (harness-managed, never commit)
 .claude/worktrees/

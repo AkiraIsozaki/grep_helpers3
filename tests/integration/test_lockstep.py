@@ -1,10 +1,10 @@
-"""lock-step 共有エンジン run_fixedpoint_multi の単一keyword同値テスト（Phase4 Task3）。
+"""lock-step 共有エンジン run_fixedpoint_multi の単一keyword同値テスト。
 
 単一 keyword の multi パスは逐次版 run_fixedpoint と byte 同値でなければならない
 （spec §4.1）。golden(92) byte 不変の最小単位検証。
 """
 
-# §6.2＝§8.4 走査構造依存・全件性対象外（rev.2 C-2連鎖で確定した固定の除外集合）。
+# §6.2＝§8.4 走査構造依存・全件性対象外（C-2 連鎖で確定した固定の除外集合）。
 # lock-step の diagnostics detail/件数が逐次版併合と一致する保証から外れる唯一のカテゴリ。
 EXCLUDED_FROM_PARITY = frozenset({"automaton_split", "graph_spilled"})
 
@@ -40,7 +40,7 @@ def test_単一keywordの走査済み非ヒットreplacedファイルのdecode_r
     """走査されたが symbol 非ヒットの replaced=True ファイルの decode_replaced 診断が
     lockstep 単一 keyword 経路で逐次版と byte 同値に保たれる回帰ロック（FIX 1）。
 
-    rev.2 C-2 の「any found」絞り込みはこの relpath を pass_results から落とすため
+    C-2 の「any found」絞り込みはこの relpath を pass_results から落とすため
     decode_replaced を欠落させた（golden 92 が見逃すケース）。FULL pass_results を
     absorb へ渡す修正で復活する。
     """
@@ -79,7 +79,7 @@ def test_単一keywordの走査済み非ヒットreplacedファイルのdecode_r
 
 def test_pipeline_lockstepは複数keywordで各TSV逐次版一致(tmp_path):
     """複数 keyword の lock-step 出力が逐次版（各 keyword 単独 run）と byte 同値であり、
-    かつ indirect 経路を実際に駆動することを検証する（Phase4 U3 レビュー反映）。
+    かつ indirect 経路を実際に駆動することを検証する（U3 レビュー反映）。
 
     コーパスは両 keyword が SHARED シンボル（ALPHA/BETA 両定数を宣言する Const.java:1）を
     seed し、OVERLAPPING ファイル（UseA/UseB）へ chase する形にしてある:
@@ -324,10 +324,10 @@ def _parse_diagnostics(text):
 
 def test_lockstep_diagnostics順序が逐次版と一致_除外automaton_split_graph_spilled(tmp_path):
     """lock-step diagnostics.txt のカテゴリ別 detail 順・SUMMARY 件数が、各 keyword を
-    単独 run した逐次版を sorted keyword 順に併合したものと一致する（Phase4 Task5）。
+    単独 run した逐次版を sorted keyword 順に併合したものと一致する。
 
     §6.2＝§8.4 走査構造依存・全件性対象外の `automaton_split` と `graph_spilled` のみ
-    比較対象から除外する（rev.2 C-2連鎖で確定した固定の除外集合）:
+    比較対象から除外する（C-2 連鎖で確定した固定の除外集合）:
     - automaton_split は GLOBAL hop ごとに全 keyword の diag へ1回ずつ発火するため、
       逐次版の per-keyword 発火（keyword ごとの local hop で個別発火）とは detail も件数も
       構造的に異なる。
@@ -410,7 +410,7 @@ def test_lockstep_diagnostics順序が逐次版と一致_除外automaton_split_g
 
 def test_lockstep_scan_hopはglobal_hop回のみ呼ばれ走査が圧縮される(tmp_path):
     """lock-step は scan_hop を GLOBAL hop ごとに1回だけ呼び、逐次版の Σ(per-keyword hop)
-    より厳密に少ない回数で走査する（Phase4 Task6 走査圧縮・C3 マジック値排除）。
+    より厳密に少ない回数で走査する（走査圧縮・C3 マジック値排除）。
 
     コーパスは 2 keyword × 各2 hop を要するよう構成: 各 keyword は ALPHA/BETA を seed し
     （Const.java:1 が両定数を宣言）、hop1 で MidA(MIDA)/MidB(MIDB) を発見、hop2 で

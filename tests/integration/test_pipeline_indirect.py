@@ -1,4 +1,4 @@
-"""Phase 2b 配線の境界契約（spec §8.2・既定出力不変・診断重複解消）。in-process。"""
+"""direct＋不動点 配線の境界契約（spec §8.2・既定出力不変・診断重複解消）。in-process。"""
 
 import io
 from contextlib import redirect_stderr

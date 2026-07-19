@@ -1,4 +1,4 @@
-"""§6.1: src 配下に Phase/Task/版/TODO マーカーを残さない（規約の機械強制）。
+"""src / tests 配下にフェーズ・タスク・版・TODO マーカーを残さない（規約の機械強制）。
 
 コメントだけでなく docstring も検査する（マーカーは docstring に多い）。正規表現は
 語境界を効かせて識別子・文字列リテラルへの誤マッチを避ける（`spec_phase` の小文字 phase、
@@ -12,10 +12,29 @@ _SRC = Path(__file__).resolve().parents[2] / "src"
 _FORBIDDEN = re.compile(r"\bPhase\s?\d|\bTask\s?\d|\brev\.\d|\bTODO\b|\bFIXME\b|\bNOTE\(")
 
 
-def test_srcに禁止マーカーが無い():
-    offenders = []
-    for p in _SRC.rglob("*.py"):
+_TESTS = Path(__file__).resolve().parents[1]
+
+
+def _offenders_in(root: Path) -> list[str]:
+    out = []
+    for p in root.rglob("*.py"):
+        if p.name == "test_no_phase_markers.py":   # 検査器自身の定義行は除外
+            continue
+        if "__pycache__" in p.parts:
+            continue
         for i, line in enumerate(p.read_text("utf-8").splitlines(), 1):
             if _FORBIDDEN.search(line):
-                offenders.append(f"{p.relative_to(_SRC)}:{i}: {line.strip()}")
+                out.append(f"{p.relative_to(root)}:{i}: {line.strip()}")
+    return out
+
+
+def test_srcに禁止マーカーが無い():
+    offenders = _offenders_in(_SRC)
+    assert not offenders, "禁止マーカーが残存:\n" + "\n".join(offenders)
+
+
+def test_testsに禁止マーカーが無い():
+    # 規約は「コードに残さない」であり tests もコード（ファイル名の phase 残存も
+    # ここで検出される: docstring/コメントに書けばこのテストが落ちる）。
+    offenders = _offenders_in(_TESTS)
     assert not offenders, "禁止マーカーが残存:\n" + "\n".join(offenders)

@@ -72,7 +72,7 @@ def test_複数seedで無関係seedからの偽chainを生まない(tmp_path):
 
 
 def test_seed_chaseは原ソースヒット行で抽出し多行snippet混入を生まない(tmp_path):
-    # Task8 Step3b 回帰: seed Hit.snippet が build_snippet 由来の多行
+    # 回帰固定: seed Hit.snippet が build_snippet 由来の多行
     # （SELECT 行の表示 snippet に隣接行 v_code := 'X'; が混入）でも、
     # chase 抽出は spec §8.1 の原ソースヒット物理行で行われ、SELECT-line
     # seed から偽の indirect:var v_code 行/chain を生まないこと。
@@ -270,11 +270,10 @@ def test_kinds_of_はChaseSymbolsを受けconstant優先():
     assert k == {"C": "constant", "v": "var", "g": "getter", "s": "setter"}
 
 
-def test_found_tupleは4要素_chase_symbols同梱_():
+def test_found_tupleは4要素_chase_symbols同梱_(tmp_path):
     from grep_analyzer.fixedpoint._scan import _scan_file
-    import pathlib
     # python ファイルを 1 つ走査し found が4要素 tuple であることを表明
-    src = pathlib.Path(__import__("tempfile").mkdtemp()) / "m.py"
+    src = tmp_path / "m.py"
     src.write_text("SEED = 1\nDER = SEED + 1\n", "utf-8")
     relpath, enc, replaced, language, dialect, found = _scan_file(
         (str(src.name), str(src), ["SEED"], {".py": "python"}, []))

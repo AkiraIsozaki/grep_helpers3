@@ -15,8 +15,9 @@ def test_scale(tmp_path, n):
     (inp / "S0.grep").write_text("pkg0/C0.java:1:S0\n", "utf-8")
     out = tmp_path / "o"
     t0 = time.perf_counter()
-    main(["--input", str(inp), "--output", str(out), "--source-root", str(src)])
+    rc = main(["--input", str(inp), "--output", str(out), "--source-root", str(src)])
     dt = time.perf_counter() - t0
+    assert rc == 0                      # 失敗 run の時間/RSS をベースラインに混ぜない
     rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     print(f"PERF n={n} dt={dt:.3f}s rss_kb={rss}")
 
@@ -49,8 +50,9 @@ def test_high_hit_density(tmp_path, hits_per_file):
     (inp / "KW.grep").write_text("\n".join(grep_lines) + "\n", "utf-8")
     out = tmp_path / "o"
     t0 = time.perf_counter()
-    main(["--input", str(inp), "--output", str(out), "--source-root", str(src)])
+    rc = main(["--input", str(inp), "--output", str(out), "--source-root", str(src)])
     dt = time.perf_counter() - t0
+    assert rc == 0                      # 失敗 run を計測に混ぜない
     rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     total = n_files * hits_per_file
     print(f"PERF density files={n_files} hits/file={hits_per_file} "
@@ -70,8 +72,9 @@ def test_fixedpoint_heavy(tmp_path, n):
     (inp / "S0.grep").write_text(f"pkg0/C0.java:1:{c0_line}\n", "utf-8")
     out = tmp_path / "o"
     t0 = time.perf_counter()
-    main(["--input", str(inp), "--output", str(out), "--source-root", str(src)])
+    rc = main(["--input", str(inp), "--output", str(out), "--source-root", str(src)])
     dt = time.perf_counter() - t0
+    assert rc == 0                      # 失敗 run を計測に混ぜない
     rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     print(f"PERF fixedpoint n={n} dt={dt:.3f}s rss_kb={rss}")
 
@@ -110,8 +113,9 @@ def test_calibrate_items_per_mb(tmp_path, monkeypatch):
     out = tmp_path / "o"
     BIG_LIMIT_MB = 100_000          # budget 経路有効化・degrade 非発火に十分大
     tracemalloc.start()
-    main(["--input", str(inp), "--output", str(out), "--source-root", str(src),
-          "--memory-limit", str(BIG_LIMIT_MB)])
+    rc = main(["--input", str(inp), "--output", str(out), "--source-root", str(src),
+               "--memory-limit", str(BIG_LIMIT_MB)])
+    assert rc == 0                      # 失敗 run を計測に混ぜない
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
 

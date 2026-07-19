@@ -1,4 +1,4 @@
-"""Phase 2b 不変条件の総合契約（spec §8.2/§9・既定出力不変と決定性）。"""
+"""不動点エンジンの不変条件の総合契約（spec §8.2/§9・既定出力不変と決定性）。"""
 
 import hashlib
 from pathlib import Path

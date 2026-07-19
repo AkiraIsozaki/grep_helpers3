@@ -14,6 +14,7 @@
 import argparse
 import dataclasses
 import json
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -39,9 +40,18 @@ def main() -> None:
     case = Path(args.case)
     opts = _opts_for(case)
     out = Path(tempfile.mkdtemp(prefix="gen_golden_"))
+    try:
+        _generate(case, opts, out, args.with_diag_summary)
+    finally:
+        shutil.rmtree(out, ignore_errors=True)   # 一時出力を残さない
+
+
+def _generate(case: Path, opts, out: Path, with_diag_summary: bool) -> None:
     rc = run(input_dir=case / "input", output_dir=out,
              source_root=case / "src", opts=opts)
-    assert rc == 0, f"pipeline rc={rc}"
+    if rc != 0:
+        # assert は python -O で消え、失敗 run から expected を生成し得るため使わない。
+        raise SystemExit(f"pipeline rc={rc}")
 
     sr = str((case / "src").resolve())
     exp = case / "expected"
@@ -58,7 +68,7 @@ def main() -> None:
         (exp / tsv.name).write_text(text, "utf-8-sig")
         print(f"wrote {exp / tsv.name}")
 
-    if args.with_diag_summary:
+    if with_diag_summary:
         diag = (out / "diagnostics.txt").read_text("utf-8")
         lines, in_sum = [], False
         for ln in diag.splitlines():
