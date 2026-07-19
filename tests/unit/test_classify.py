@@ -36,7 +36,7 @@ def test_Groovy分類():
     assert classify_groovy("class Foo {") == ("宣言", "medium")
     assert classify_groovy("if (a == b) {") == ("比較", "medium")
     assert classify_groovy("switch (x) {") == ("分岐", "medium")
-    assert classify_groovy("return v") == ("return", "medium")
+    assert classify_groovy("return v") == ("返却", "medium")
     assert classify_groovy("println v") == ("出力", "medium")
 
 
@@ -66,7 +66,7 @@ def test_jsp_classify_各category():
     src_decl = "<%! private int n; %>\n"
     assert classify_hit("jsp", "", src_decl, 1, src_decl)[0] == "宣言"
     src_ret = "<% return v; %>\n"
-    assert classify_hit("jsp", "", src_ret, 1, src_ret)[0] == "return"
+    assert classify_hit("jsp", "", src_ret, 1, src_ret)[0] == "返却"
 
 
 def test_jsp_式とELはその他():

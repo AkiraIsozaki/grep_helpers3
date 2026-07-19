@@ -200,7 +200,7 @@ _GROOVY_RULES = [
     (re.compile(r"\b(?:if|while)\b|==~|<=>|==|!=|<=|>=|=~|"
                 r"(?<![-=])<(?!=)|(?<![-=])>(?!=)"), "比較"),
     (re.compile(r"\b(?:switch|for|case)\b"), "分岐"),
-    (re.compile(r"\breturn\b"), "return"),
+    (re.compile(r"\breturn\b"), "返却"),
     (re.compile(r"\b(?:println|print|printf)\b|\blog\.\w+"), "出力"),
 ]
 

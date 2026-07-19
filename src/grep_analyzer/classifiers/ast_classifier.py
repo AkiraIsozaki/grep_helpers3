@@ -25,7 +25,7 @@ _CATEGORY_JAVAC = {
     "declaration": "宣言",
     "preproc_def": "宣言",
     "assignment_expression": "代入",
-    "return_statement": "return",
+    "return_statement": "返却",
 }
 _CATEGORY_PY = {
     "if_statement": "比較",
@@ -34,7 +34,7 @@ _CATEGORY_PY = {
     "for_statement": "分岐",
     "assignment": "代入",
     "augmented_assignment": "代入",
-    "return_statement": "return",
+    "return_statement": "返却",
     "import_statement": "宣言",
     "import_from_statement": "宣言",
 }
@@ -51,7 +51,7 @@ _CATEGORY_JS = {
     "import_statement": "宣言",
     "assignment_expression": "代入",
     "augmented_assignment_expression": "代入",
-    "return_statement": "return",
+    "return_statement": "返却",
 }
 _CATEGORY_TS = {
     **_CATEGORY_JS,

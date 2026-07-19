@@ -29,7 +29,7 @@ def test_python_category():
     assert classify_ast("python", "X = 1\n", 1) == ("代入", "high")
     assert classify_ast("python", "if a == b:\n    pass\n", 1) == ("比較", "high")
     assert classify_ast("python", "from x import y\n", 1) == ("宣言", "high")
-    assert classify_ast("python", "def f():\n    return z\n", 2) == ("return", "high")
+    assert classify_ast("python", "def f():\n    return z\n", 2) == ("返却", "high")
 
 
 def test_javascript_category():
