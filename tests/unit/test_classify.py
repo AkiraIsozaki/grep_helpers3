@@ -143,8 +143,8 @@ def test_classify_hitは正規表現言語へ渡すcontentを上限でキャッ�
     from grep_analyzer import classify as clsmod
     seen = {}
     monkeypatch.setattr(clsmod, "classify_sql",
-                        lambda content: (seen.__setitem__("len", len(content)),
-                                         ("その他", "medium"))[1])
+                        lambda content, **kw: (seen.__setitem__("len", len(content)),
+                                               ("その他", "medium"))[1])
     long_content = "SELECT " + "x" * 100_000
     clsmod.classify_hit("sql", "bourne", "", 1, long_content)
     assert seen["len"] <= clsmod._CLASSIFY_LINE_CAP

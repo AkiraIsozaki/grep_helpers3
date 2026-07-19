@@ -20,16 +20,18 @@ def sanitize_field(cell: str) -> str:
     return cell.translate(_SANITIZE_MAP)
 
 
-# サニタイズ規約②: 数式トリガ（CSV/TSV injection）の無害化。
+# サニタイズ規約②: 数式トリガ（CSV/TSV injection）＋先頭二重引用符の無害化。
 # Excel/LibreOffice はセル先頭が = + - @ だと数式として評価し、DDE/HYPERLINK 等で
-# コード実行・情報漏洩に至る。出力は BOM 付きで Excel が自動的に数式解釈するため、
-# untrusted ソース由来セル（snippet/via_symbol 等）の先頭をクオートで無害化する。
-# 先頭 TAB/CR は sanitize_field が空白化済みなので {= + - @} のみ対象。
-_FORMULA_TRIGGERS = frozenset("=+-@")
+# コード実行・情報漏洩に至る。さらに .tsv 直開きでは先頭 `"` をテキスト修飾子として
+# 扱い、閉じ `"` まで後続のタブ区切りセルを 1 セルへ併合する（列ズレ）。
+# 出力は BOM 付きで Excel が自動解釈するため、untrusted ソース由来セル
+# （snippet/via_symbol 等）の先頭をクオートで無害化する。
+# 先頭 TAB/CR は sanitize_field が空白化済みなので {= + - @ "} のみ対象。
+_FORMULA_TRIGGERS = frozenset('=+-@"')
 
 
 def neutralize_formula(cell: str) -> str:
-    """セル先頭が数式トリガなら単一引用符を前置して無害化する（決定的）。
+    """セル先頭が数式トリガ／二重引用符なら単一引用符を前置して無害化する（決定的）。
 
     sanitize_field の後段で _data_line から全列に適用する（書込側＝data_sha 側で
     共有するため round-trip は不変）。引用符は Excel/Calc が取り込み時にテキスト

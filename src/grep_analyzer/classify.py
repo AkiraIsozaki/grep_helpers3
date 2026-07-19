@@ -34,11 +34,12 @@ def classify_hit(
         return ("その他", "high")
     content = content[:_CLASSIFY_LINE_CAP]      # per-hit コストを有界化（#L）
     if language == "sql":
-        return classify_sql(content)
+        # text/lineno/cache 併用で行跨ぎ /* */ の内部行もコメント判定する。
+        return classify_sql(content, text=file_text, lineno=lineno, cache=cache)
     if language == "perl":
         return classify_perl(content)
     if language == "groovy":
-        return classify_groovy(content)
+        return classify_groovy(content, text=file_text, lineno=lineno, cache=cache)
     if language == "shell":
         return classify_shell(content, dialect)
     return classify_shell(content, "bourne")

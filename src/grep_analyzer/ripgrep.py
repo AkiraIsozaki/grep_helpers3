@@ -165,7 +165,10 @@ def _run_rg_list(rg, pat_path, root, paths):
     walk の _is_binary を唯一の境界に統一。明示パス渡しでは ignore 規則は
     適用されないが、`.` 走査時との挙動統一のためフラグは据え置く。
     """
-    args = [rg, "-l", "-F", "-a", "--no-messages", "--no-ignore", "--hidden",
+    # -i: automaton 側が SQL を大小無別で照合するため、prefilter も大小無別にして
+    # 「scan がヒットするファイルの上位集合」という契約を保つ（他言語では単に
+    # 上位集合が少し広がるだけで結果集合は不変）。
+    args = [rg, "-l", "-F", "-a", "-i", "--no-messages", "--no-ignore", "--hidden",
             "--no-require-git", "-f", pat_path]
     # `--` 区切り必須：corpus 由来の relpath は `-foo.c` のように `-` 始まりがあり得る。
     # 区切りが無いと rg がフラグと誤認し rc=2 で落ち、prefilter が None→全件走査へ
@@ -186,10 +189,26 @@ def _run_rg_list(rg, pat_path, root, paths):
     for raw in proc.stdout.split(b"\n"):
         if not raw:
             continue
-        if raw.startswith(b"./"):
-            raw = raw[2:]
-        hit.add(os.fsdecode(raw))
+        hit.add(os.fsdecode(_normalize_rel_bytes(raw, backslash_sep=_SEP_IS_BACKSLASH)))
     return hit
+
+
+# ネイティブ区切りが \ か（Windows）。rg はネイティブ区切りで出力する。
+_SEP_IS_BACKSLASH = os.sep == "\\"
+
+
+def _normalize_rel_bytes(raw: bytes, *, backslash_sep: bool) -> bytes:
+    """rg 出力の相対パスを walk の posix 形式（`/` 区切り・`./` 無し）へ揃える。
+
+    Windows の rg は `.\\src\\a.c` を返すが rel_to_abs のキーは as_posix() 形式。
+    正規化しないと照合が空振りし「正当な空集合」として全キーワード 0 件 TSV が
+    確定する。POSIX では `\\` は正当なファイル名文字なので置換しない。
+    """
+    if backslash_sep:
+        raw = raw.replace(b"\\", b"/")
+    if raw.startswith(b"./"):
+        raw = raw[2:]
+    return raw
 
 
 def _chunk_paths(paths: list[str]):
@@ -213,11 +232,15 @@ def _chunk_paths(paths: list[str]):
 def prefilter(
     root: Path, rel_to_abs: dict[str, Path], symbols: list[str],
     restrict_to: set[str] | None = None,
+    on_degrade=None,
 ) -> set[str] | None:
     """symbols のいずれかの部分文字列を含む relpath 集合（walk 上位集合）を返す。
 
     rg 不在/失敗は None（呼出側はフィルタ無効＝全 relpath 走査）。symbols 空は空集合。
     -a で rg のバイナリ skip を無効化し walk の _is_binary を唯一の境界に統一。
+    `on_degrade` を渡すと None 縮退の理由（"rg_unavailable"/"non_ascii_symbols"/
+    "rg_failed"）を呼び返す。ON は記録されるのに効かなかったことが残らない
+    非対称を塞ぐための観測フック（縮退しても出力は正しい・全件走査）。
 
     `restrict_to` を与えると rg の探索対象を全ツリー `.` ではなくその relpath 集合に
     限定する（明示パス渡し・ARG_MAX 超は分割 union）。lock-step の per-keyword
@@ -227,6 +250,8 @@ def prefilter(
     """
     rg = _resolve_rg()
     if rg is None:
+        if on_degrade is not None:
+            on_degrade("rg_unavailable")
         return None
     # 空文字 symbol は rg -F で全行マッチ＝全件返却となり prefilter を無効化する（L4）。
     # automaton.build と同様に空を除外し、全部空なら rg を起動せず set()。
@@ -241,6 +266,8 @@ def prefilter(
     # ASCII symbol は cp932/euc-jp/latin-1/utf-8 で同一バイトなので rg は安全な上位集合。
     # よって非 ASCII symbol を含む hop は prefilter を無効化（None＝全件走査）して出力を保証する。
     if not all(s.isascii() for s in symbols):
+        if on_degrade is not None:
+            on_degrade("non_ascii_symbols")
         return None
     with tempfile.NamedTemporaryFile("w", suffix=".pat", delete=False,
                                      encoding="utf-8") as pf:
@@ -262,5 +289,7 @@ def prefilter(
     finally:
         Path(pat_path).unlink(missing_ok=True)
     if raw_hits is None:
+        if on_degrade is not None:
+            on_degrade("rg_failed")           # rc∉{0,1}・timeout・起動失敗
         return None
     return {r for r in raw_hits if r in rel_to_abs}

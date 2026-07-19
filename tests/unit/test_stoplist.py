@@ -104,16 +104,16 @@ def test_1文字記号はmin_specificity2でtoo_short棄却():
     assert "ab" in r.accepted, "2文字 ab は accepted"
 
 
-def test_小文字SQL型名のすり抜け():
-    """B7c: admit は case-sensitive のため小文字 number は accepted（健全・二次防御の意図どおり）。
+def test_SQLキーワード篩は大小無別に適用する():
+    """PL/SQL 識別子は大小無別なので、キーワード/型名の篩も大小無別に適用する。
 
-    _SQL_KW は PL/SQL 慣例の大文字形 NUMBER 等で登録されており admit は case-sensitive 完全一致。
-    小文字 number は SQL キーワード集合に含まれないためすり抜けて accepted になる。
-    これは意図的な設計（型名除外は二次防御で主防御は AST/分類側）。
+    従来は case-sensitive 完全一致で `number`（小文字型名）や `WHERE`（大文字キーワード）
+    が素通りしていた（抽出側 IGNORECASE との非対称）。SQL 以外は従来どおり
+    case-sensitive（Java の `IF` 等は識別子として正当）。
     """
     pol = SymbolPolicy(min_specificity=2, user_stoplist=frozenset())
-    # 大文字 NUMBER は keyword 棄却（登録済み）
     assert ("NUMBER", "keyword") in admit(["NUMBER"], "sql", pol).rejected
-    # 小文字 number は accepted（すり抜け）= case-sensitive 設計の意図どおり
-    r = admit(["number"], "sql", pol)
-    assert "number" in r.accepted, "B7c: 小文字 number は大文字 NUMBER と別扱い（case-sensitive）"
+    assert ("number", "keyword") in admit(["number"], "sql", pol).rejected
+    assert ("WHERE", "keyword") in admit(["WHERE"], "sql", pol).rejected
+    # SQL 以外は大小無別を適用しない（IF は Java の識別子として正当）
+    assert "IF" in admit(["IF"], "java", pol).accepted

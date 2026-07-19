@@ -236,12 +236,19 @@ def _scan_one(relpath, abspath, automaton_obj, lang_map, fallback, cache=None, e
             decode_cache=decode_cache, fast=fast)
     except OSError:
         # walk 後の TOCTOU（消失/権限変化）等が起きうる。run 全体を落とさず空ヒットへ降格する。
-        return relpath, "utf-8", False, "c", "bourne", []
+        # enc=None は「メタ未確定」の番兵。捏造値 ("utf-8", ...) を返すと absorb 側の
+        # setdefault が先取りし、後続 hop の正しい encoding を上書き不能にして
+        # TSV の encoding 列を汚す。
+        return relpath, None, False, "c", "bourne", []
     found = []
     if automaton_obj is not None:
+        # automaton_obj は build_pair の (cs, ci) 対。言語規約（SQL は大小無別）に
+        # 従って照合する。後方互換で単体 Automaton が渡された場合は cs として扱う。
+        pair = automaton_obj if isinstance(automaton_obj, tuple) \
+            else (automaton_obj, None)
         resolver = _LazyAstResolver(language, text)
         for i, line in enumerate(text.split("\n"), start=1):
-            symbols = list(automaton.scan_line(automaton_obj, line))
+            symbols = list(automaton.scan_line_for_language(pair, line, language))
             if not symbols:
                 continue
             cs = resolver.chase_symbols_at(i)
@@ -258,7 +265,7 @@ def _scan_file(args):
     この関数を使わない。単体テスト等の 1 ファイル走査の互換のため温存する。
     """
     relpath, abspath, symbol_list, lang_map, fallback = args
-    return _scan_one(relpath, abspath, automaton.build(symbol_list), lang_map, fallback)
+    return _scan_one(relpath, abspath, automaton.build_pair(symbol_list), lang_map, fallback)
 
 
 # multiprocessing ワーカ：Pool は run 単位で 1 度だけ生成し全 hop/chunk で再利用する。
@@ -304,8 +311,9 @@ def make_decode_cache(opts, namespace: "str | None" = None):
     """
     if namespace is None:
         namespace = decode_cache_namespace(opts)
+    # jobs は並列会計（自増分×jobs の保守的総量判定）に使う。main/worker で同値を渡す。
     return DecodeCache(opts.decode_cache_dir, namespace=namespace,
-                       max_bytes=opts.decode_cache_max_bytes)
+                       max_bytes=opts.decode_cache_max_bytes, jobs=opts.jobs)
 
 
 def _worker_init(lang_map, fallback, jobs, decode_cache_dir, namespace, fast,
@@ -325,8 +333,9 @@ def _worker_init(lang_map, fallback, jobs, decode_cache_dir, namespace, fast,
     # max_bytes を worker にも渡す。jobs>1 では scan の put は worker 側なので、ここで
     # 上限を効かせないと --decode-cache-max-bytes が並列時に空文になる（F3）。各 worker は
     # 共有ディレクトリ全体に対して退避するので、どれかが上限を跨いだ時点で全体が縮む。
+    # jobs も渡し「自分の増分 × jobs」の保守的会計で並列時の合計膨張を上限内に抑える。
     _WORKER_DECODE_CACHE = DecodeCache(decode_cache_dir, namespace=namespace,
-                                       max_bytes=max_bytes)
+                                       max_bytes=max_bytes, jobs=jobs)
 
 
 def _scan_file_worker(args):
@@ -335,7 +344,7 @@ def _scan_file_worker(args):
     global _WORKER_AUTOMATON, _WORKER_SIG
     if sig != _WORKER_SIG:
         with open(sym_path, encoding="utf-8") as f:
-            _WORKER_AUTOMATON = automaton.build(json.load(f))
+            _WORKER_AUTOMATON = automaton.build_pair(json.load(f))
         _WORKER_SIG = sig
     return _scan_one(relpath, abspath, _WORKER_AUTOMATON,
                      _WORKER_LANG_MAP, _WORKER_FALLBACK,
@@ -344,10 +353,11 @@ def _scan_file_worker(args):
 
 
 def _map_chunksize(n_files: int, jobs: int) -> int:
-    """pool.map 用の決定的 chunksize を返す（順序保存ゆえ出力不変）。
+    """imap_unordered 用の決定的 chunksize を返す。
 
-    既定の chunksize=1 はファイル毎 IPC でディスパッチ過多。worker あたり概ね
-    4 バッチに割れる粒度にして round-trip を削減する。
+    出力不変の根拠は chunksize でなく scan_hop の relpath 集約後 sorted（完了順
+    非依存）。chunksize は性能のみに効く。既定の chunksize=1 はファイル毎 IPC で
+    ディスパッチ過多。worker あたり概ね 4 バッチに割れる粒度にして round-trip を削減する。
     """
     if n_files <= 0:
         return 1
@@ -404,7 +414,7 @@ def _scan_chunk_parallel(chunk, scan_files, pool, opts, tick):
 def _scan_chunk_serial(chunk, scan_files, opts, fallback, file_cache, enc_memo,
                        decode_cache, tick):
     """逐次に chunk の automaton を 1 度構築し各ファイルを走査して結果 list を返す。"""
-    automaton_obj = automaton.build(chunk)
+    automaton_obj = automaton.build_pair(chunk)
     res = []
     for relpath, abspath in scan_files:
         res.append(_scan_one(relpath, str(abspath), automaton_obj,
@@ -441,6 +451,10 @@ def scan_hop(scan_symbols, scan_files, opts, nchunks, file_cache=None, pool=None
     file_meta_by_relpath: dict[str, tuple] = {}
     fallback = list(opts.encoding_fallback)
     scanned_count = 0
+    if progress is not None:
+        # 分母はこの hop の実 tick 数（scan_files × chunk 数）。初回 walk 総数のままだと
+        # prefilter が効いた hop で分母が過大になり最終件判定も成立しない。
+        progress.begin_hop(len(scan_files) * len(chunks))
 
     def tick():
         nonlocal scanned_count

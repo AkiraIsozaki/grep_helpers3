@@ -10,10 +10,16 @@ from grep_analyzer.classifiers.base import ClassifyResult
 # ノード型 → カテゴリの対応であり、判定軸の最小集合とする。
 # 内側から外へ climb して最初に一致した文レベルノードを採る。
 # argument_list / init_declarator は if/宣言 と包含関係で衝突するため含めない。
+# ループ（while/for/do）は regex 言語（sql の WHILE/FOR→分岐）と対称に「分岐」へ
+# 割り当てる。表に無いと AST 言語だけループが「その他」になる逆転が起きる。
 _CATEGORY_JAVAC = {
     "if_statement": "比較",
     "switch_statement": "分岐",
     "switch_expression": "分岐",
+    "while_statement": "分岐",
+    "do_statement": "分岐",
+    "for_statement": "分岐",
+    "enhanced_for_statement": "分岐",
     "field_declaration": "宣言",
     "local_variable_declaration": "宣言",
     "declaration": "宣言",
@@ -24,6 +30,8 @@ _CATEGORY_JAVAC = {
 _CATEGORY_PY = {
     "if_statement": "比較",
     "match_statement": "分岐",
+    "while_statement": "分岐",
+    "for_statement": "分岐",
     "assignment": "代入",
     "augmented_assignment": "代入",
     "return_statement": "return",
@@ -33,6 +41,10 @@ _CATEGORY_PY = {
 _CATEGORY_JS = {
     "if_statement": "比較",
     "switch_statement": "分岐",
+    "while_statement": "分岐",
+    "do_statement": "分岐",
+    "for_statement": "分岐",
+    "for_in_statement": "分岐",
     "lexical_declaration": "宣言",
     "variable_declaration": "宣言",
     "field_definition": "宣言",

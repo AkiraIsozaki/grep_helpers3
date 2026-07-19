@@ -191,3 +191,35 @@ def test_空文字シンボルはrgを起動せずprefilterを無効化しない
         lambda *a, **k: (called.__setitem__("n", called["n"] + 1), set())[1])
     assert ripgrep.prefilter(tmp_path, {}, [""]) == set()
     assert called["n"] == 0
+
+
+def test_区切り正規化はWindows形式のrg出力をposix相対へ揃える():
+    # Windows の rg はネイティブ区切り \ で出力するが、rel_to_abs のキーは
+    # as_posix() 形式。正規化しないと照合が全て空振りし「正当な空集合」として
+    # 全キーワード 0 件の TSV が確定してしまう。
+    from grep_analyzer.ripgrep import _normalize_rel_bytes
+    assert _normalize_rel_bytes(rb"src\a\b.c", backslash_sep=True) == b"src/a/b.c"
+    assert _normalize_rel_bytes(rb".\src\a.c", backslash_sep=True) == b"src/a.c"
+    assert _normalize_rel_bytes(b"./src/a.c", backslash_sep=False) == b"src/a.c"
+    # POSIX ではバックスラッシュは正当なファイル名文字なので置換しない
+    assert _normalize_rel_bytes(rb"we\ird.c", backslash_sep=False) == rb"we\ird.c"
+
+
+def test_prefilter無効化の理由はon_degradeで通知される(monkeypatch, tmp_path):
+    from grep_analyzer import ripgrep
+
+    reasons: list[str] = []
+    monkeypatch.setattr(ripgrep, "_resolve_rg", lambda: None)
+    assert ripgrep.prefilter(tmp_path, {}, ["A"], on_degrade=reasons.append) is None
+    assert reasons == ["rg_unavailable"]
+
+    reasons.clear()
+    monkeypatch.setattr(ripgrep, "_resolve_rg", lambda: "/usr/bin/rg")
+    assert ripgrep.prefilter(tmp_path, {}, ["日本語"],
+                             on_degrade=reasons.append) is None
+    assert reasons == ["non_ascii_symbols"]
+
+    reasons.clear()
+    monkeypatch.setattr(ripgrep, "_run_rg_list", lambda *a, **kw: None)
+    assert ripgrep.prefilter(tmp_path, {}, ["A"], on_degrade=reasons.append) is None
+    assert reasons == ["rg_failed"]

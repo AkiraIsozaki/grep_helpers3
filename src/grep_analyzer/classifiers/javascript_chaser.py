@@ -6,7 +6,7 @@ from grep_analyzer.classifiers.ast_base import node_text, run_field_chase
 
 _BINDING = {"lexical_declaration", "variable_declaration",
             "assignment_expression", "augmented_assignment_expression",
-            "field_definition", "method_definition"}
+            "field_definition", "method_definition", "for_in_statement"}
 
 
 def _names_from_pattern(node, out):
@@ -59,7 +59,7 @@ def _declarators(decl, is_const, consts, vars_):
             _names_from_pattern(name, target)
 
 
-def handle_js_binding(node, consts, vars_, getters, setters):
+def handle_js_binding(node, lineno, consts, vars_, getters, setters):
     t = node.type
     if t == "lexical_declaration":
         is_const = any(not c.is_named and node_text(c) == "const"
@@ -75,6 +75,14 @@ def handle_js_binding(node, consts, vars_, getters, setters):
         prop = node.child_by_field_name("property")
         if prop is not None and prop.type in ("property_identifier", "private_property_identifier"):
             vars_.append(node_text(prop))
+    elif t == "for_in_statement":
+        # for (const x of arr) / for (x in obj) のループ変数（lexical_declaration を
+        # 生成しないため専用に拾う）。kind=const は consts へ。
+        left = node.child_by_field_name("left")
+        if left is not None:
+            kind_node = node.child_by_field_name("kind")
+            is_const = kind_node is not None and node_text(kind_node) == "const"
+            _names_from_pattern(left, consts if is_const else vars_)
     elif t == "method_definition":
         kind = None
         for c in node.children:
@@ -82,9 +90,16 @@ def handle_js_binding(node, consts, vars_, getters, setters):
                 kind = node_text(c)
                 break
         name = node.child_by_field_name("name")
-        if kind and name is not None and name.type == "property_identifier":
+        # name 行ゲート（java_chaser と同契約）: method_definition は本体全行に
+        # 交差するため、ゲートが無いと本体行・閉じ括弧行のヒットまで getter/setter
+        # 名を放出し terminal に偽シンボルが載る。
+        if (kind and name is not None and name.type == "property_identifier"
+                and name.start_point[0] == lineno - 1):
             (getters if kind == "get" else setters).append(node_text(name))
 
 
 def extract_tree(language, root, lineno):
-    return run_field_chase(root, lineno, _BINDING, handle_js_binding)
+    """parse 済 root から JS 束縛を field-directed・multi-node 抽出する。"""
+    return run_field_chase(
+        root, lineno, _BINDING,
+        lambda node, c, v, g, s: handle_js_binding(node, lineno, c, v, g, s))

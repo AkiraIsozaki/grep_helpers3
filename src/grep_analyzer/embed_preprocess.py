@@ -43,10 +43,15 @@ def jsp_region_span(file_text: str, lineno: int):
     """ヒット行を含む <%…%> 系ブロックの行スパン [s,e] を返す（0始まり）。
 
     区間外は None（呼出側で 1 行フォールバック）。
-    区間検出は extract_jsp_java と同じ _JSP_CODE 正規表現を共有する（既知限界）。
+    extract_jsp_java と同じくディレクティブ（<%@）・JSP/HTML コメントを先にマスク
+    してから _JSP_CODE を適用する（生テキスト直適用だと <%@ page %> や
+    <%-- --%> を code 区間と誤認し、コメント塊が snippet 化される）。
     """
     hit = lineno - 1
-    for m in _JSP_CODE.finditer(file_text):
+    masked = file_text
+    for rx in (_JSP_COMMENT, _HTML_COMMENT, _JSP_DIRECTIVE, _JSP_ACTION):
+        masked = rx.sub(lambda m: blank_keep_newlines(m.group(0)), masked)
+    for m in _JSP_CODE.finditer(masked):
         start = file_text.count("\n", 0, m.start())
         end = file_text.count("\n", 0, m.end())
         if start <= hit <= end:

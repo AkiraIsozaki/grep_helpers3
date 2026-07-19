@@ -90,13 +90,22 @@ def load_stoplist(path: Path | None) -> frozenset[str]:
     return frozenset(out)
 
 
+# SQL（PL/SQL）は識別子が大小無別なので、キーワード篩も大小無別に適用する
+# （`WHERE`（大文字）や `number`（小文字型名）が篩を素通りする非対称の防止）。
+_CI_KEYWORD_LANGS = frozenset({"sql"})
+_KEYWORDS_FOLDED: dict[str, frozenset[str]] = {
+    lang: frozenset(k.lower() for k in LANG_KEYWORDS[lang]) for lang in _CI_KEYWORD_LANGS
+}
+
+
 def admit(symbols: list[str], language: str, policy: SymbolPolicy) -> AdmissionResult:
     """シンボル列を静的ポリシーで決定的に採否（cap 非適用）。"""
     kw = LANG_KEYWORDS.get(language, frozenset())
+    kw_folded = _KEYWORDS_FOLDED.get(language)
     accepted: list[str] = []
     rejected: list[tuple[str, str]] = []
     for s in symbols:
-        if s in kw:
+        if s in kw or (kw_folded is not None and s.lower() in kw_folded):
             rejected.append((s, "keyword"))
         elif len(s) < policy.min_specificity:
             rejected.append((s, "too_short"))

@@ -11,9 +11,21 @@ ASCII 部分文字列 `foo` を偽陽性として拾い得る。これは上記�
 許容コストであり、欧文 Unicode 識別子は本ツールの主対象外である（H2・意図的トレードオフ）。
 """
 
+import string
+
 import ahocorasick
 
 _IDENT = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+
+# ASCII A-Z のみを小文字へ畳む（長さ保存＝index 算術が生きる。str.lower() は
+# 一部 Unicode で長さが変わり得るため使わない）。
+_ASCII_FOLD = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+
+# 大小無別で照合する言語（PL/SQL 識別子は大文字小文字を区別しない）。
+# 抽出側（ORACLE_DECL_ASSIGN_RE 等）は IGNORECASE なのに照合側が区別すると、
+# 宣言 `V_CNT NUMBER := 0` から抽出した記号が参照行 `v_cnt := 1` に不一致となり
+# indirect 行が丸ごと欠落する（照合の非対称）。
+CASE_INSENSITIVE_LANGS = frozenset({"sql"})
 
 
 def build(symbols: list[str]) -> ahocorasick.Automaton | None:
@@ -26,6 +38,41 @@ def build(symbols: list[str]) -> ahocorasick.Automaton | None:
         automaton_obj.add_word(s, s)
     automaton_obj.make_automaton()
     return automaton_obj
+
+
+def build_ci(symbols: list[str]) -> ahocorasick.Automaton | None:
+    """ASCII 畳み込みキーで Automaton を構築する（値は原綴りの決定的 tuple）。
+
+    大小違いのみの複数原綴りは同一キーへ集約し sorted tuple で保持する
+    （scan 側はヒット 1 箇所から全原綴りを報告する）。
+    """
+    folded: dict[str, set[str]] = {}
+    for s in symbols:
+        if s:
+            folded.setdefault(s.translate(_ASCII_FOLD), set()).add(s)
+    if not folded:
+        return None
+    automaton_obj = ahocorasick.Automaton()
+    for key, originals in folded.items():
+        automaton_obj.add_word(key, tuple(sorted(originals)))
+    automaton_obj.make_automaton()
+    return automaton_obj
+
+
+def build_pair(symbols: list[str]):
+    """(case-sensitive, ASCII 畳み込み) の Automaton 対を構築する。
+
+    scan_line_for_language が言語に応じて使い分ける。どちらも空なら (None, None)。
+    """
+    return build(symbols), build_ci(symbols)
+
+
+def scan_line_for_language(pair, line: str, language: str) -> list[str]:
+    """言語の識別子規約に従い 1 行を照合する（CASE_INSENSITIVE_LANGS は大小無別）。"""
+    cs_automaton, ci_automaton = pair
+    if language in CASE_INSENSITIVE_LANGS:
+        return _scan_line_ci(ci_automaton, line)
+    return scan_line(cs_automaton, line)
 
 
 def scan_line(automaton_obj: ahocorasick.Automaton | None, line: str) -> list[str]:
@@ -45,4 +92,24 @@ def scan_line(automaton_obj: ahocorasick.Automaton | None, line: str) -> list[st
         after = line[end + 1] if end + 1 < n else ""
         if before not in _IDENT and after not in _IDENT:
             found.add(symbol)
+    return sorted(found)
+
+
+def _scan_line_ci(ci_automaton, line: str) -> list[str]:
+    """ASCII 畳み込み行を照合し原綴り集合を昇順ユニークで返す（決定的）。
+
+    畳み込みは長さ保存なので語境界 index は原行と一致する。境界文字集合 _IDENT は
+    大小両方を含むため、畳み込み行での境界判定は原行と同値である。
+    """
+    if ci_automaton is None:
+        return []
+    folded_line = line.translate(_ASCII_FOLD)
+    found = set()
+    n = len(folded_line)
+    for end, originals in ci_automaton.iter(folded_line):
+        start = end - len(originals[0]) + 1
+        before = folded_line[start - 1] if start > 0 else ""
+        after = folded_line[end + 1] if end + 1 < n else ""
+        if before not in _IDENT and after not in _IDENT:
+            found.update(originals)
     return sorted(found)

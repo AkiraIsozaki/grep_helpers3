@@ -39,12 +39,17 @@ def _from_assignment(node, consts, vars_):
         right = right.child_by_field_name("right")
 
 
-def _from_decorated(node, getters, setters):
+def _from_decorated(node, lineno, getters, setters):
     defn = node.child_by_field_name("definition")
     if defn is None or defn.type != "function_definition":
         return
     name_node = defn.child_by_field_name("name")
     if name_node is None:
+        return
+    # name 行ゲート（java_chaser と同契約）: decorated_definition は本体全行に
+    # 交差するため、ゲートが無いと本体行のヒットすべてが getter/setter 名を放出し
+    # 不動点追跡の terminal に偽シンボルが載る。
+    if name_node.start_point[0] != lineno - 1:
         return
     name = node_text(name_node)
     for ch in node.children:
@@ -63,12 +68,15 @@ def _from_decorated(node, getters, setters):
                 return
 
 
-def _handle_python(node, consts, vars_, getters, setters):
+def _handle_python(node, lineno, consts, vars_, getters, setters):
     if node.type == "decorated_definition":
-        _from_decorated(node, getters, setters)
+        _from_decorated(node, lineno, getters, setters)
     else:
         _from_assignment(node, consts, vars_)
 
 
 def extract_tree(language, root, lineno):
-    return run_field_chase(root, lineno, _BINDING, _handle_python)
+    """parse 済 root から Python 束縛を field-directed・multi-node 抽出する。"""
+    return run_field_chase(
+        root, lineno, _BINDING,
+        lambda node, c, v, g, s: _handle_python(node, lineno, c, v, g, s))

@@ -119,3 +119,14 @@ def test_chardet高confidence検出は要確認にしない(monkeypatch):
         lambda b: {"encoding": "euc-jp", "confidence": 0.99})
     text, enc, replaced = decode_bytes("日本語".encode("euc-jp"), DEFAULT_FALLBACK)
     assert enc == "euc-jp" and replaced is False
+
+
+def test_空のfallback鎖は既定鎖へ復帰して落ちない(monkeypatch):
+    monkeypatch.setattr(
+        "grep_analyzer.encoding.chardet.detect", lambda b: {"encoding": None}
+    )
+    # 空鎖のまま fallback_chain[-1] へ到達すると IndexError になる。既定鎖へ復帰する。
+    text, enc, replaced = decode_bytes("日本語".encode("cp932"), [])
+    assert text == "日本語"
+    assert enc == "cp932"
+    assert replaced is False
