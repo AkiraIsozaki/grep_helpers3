@@ -19,7 +19,28 @@
       "Skill(superpowers:executing-plans)",
       "Skill(superpowers:dispatching-parallel-agents)",
       "Skill(superpowers:requesting-code-review)",
-      "WebFetch(domain:pypi.org)"
+      "WebFetch(domain:pypi.org)",
+      "Skill(coding-conventions)",
+      "Skill(writing-tests)",
+      "Skill(steering)",
+      "Skill(brainstorming)",
+      "Skill(test-driven-development)",
+      "Skill(systematic-debugging)",
+      "Skill(verification-before-completion)",
+      "Skill(refactoring)",
+      "Skill(requesting-code-review)",
+      "Skill(receiving-code-review)",
+      "Skill(dispatching-parallel-agents)",
+      "Skill(finishing-a-development-branch)",
+      "Skill(using-git-worktrees)",
+      "Skill(prd-writing)",
+      "Skill(functional-design)",
+      "Skill(architecture-design)",
+      "Skill(repository-structure)",
+      "Skill(glossary-creation)",
+      "Skill(writing-skills)",
+      "Bash(mkdir -p .claude/skills/coding-conventions .claude/skills/writing-tests)",
+      "Bash(git mv *)"
     ]
   }
 }
