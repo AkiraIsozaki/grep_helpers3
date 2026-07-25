@@ -5,6 +5,7 @@
 使い方だけ知りてえってお方は [.claude/README.md](../.claude/README.md) をご覧じろ。
 噺はいいから理屈だけ寄越せってお方にゃ、堅気の文で書いた標準版
 [claude-infra-design-plain.md](claude-infra-design-plain.md) がございます。
+上方の語りなら、代書屋仕立ての [claude-infra-design-daishoya.md](claude-infra-design-daishoya.md) てえ趣向も。
 
 ---
 

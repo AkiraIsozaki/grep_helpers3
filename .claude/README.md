@@ -6,6 +6,7 @@ spec-driven・superpowers・mattpocock-skills てえ三つの流儀を混ぜて�
 普請の理屈と経緯を知りてえお方は [docs/claude-infra-design.md](../docs/claude-infra-design.md) を、
 噺はいいから堅気の文で読みてえお方は
 [docs/claude-infra-design-plain.md](../docs/claude-infra-design-plain.md) をご覧じろ。
+上方の語りがお好みなら、代書屋仕立ての [README-daishoya.md](README-daishoya.md) てえ趣向もございます。
 
 ```
 .claude/
